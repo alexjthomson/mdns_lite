@@ -1,3 +1,7 @@
+//! # ESP mDNS - Service
+//! This module contains high-level service-related logic and interacts with the
+//! protocol and network modules to handle mDNS operations.
+
 use alloc::{string::String, vec::Vec};
 use esp_idf_sys::esp_efuse_mac_get_default;
 use heapless::FnvIndexMap;

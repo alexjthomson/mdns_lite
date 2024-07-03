@@ -16,5 +16,6 @@
 
 extern crate alloc;
 
+pub mod network;
+pub mod protocol;
 pub mod service;
-// TODO: Create something that consumes MdnsService and broadcasts it
