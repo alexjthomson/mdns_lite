@@ -1,0 +1,16 @@
+[package]
+name = "esp_mdns"
+description = "An lightweight mDNS implementation in Rust for ESP devices."
+version = "0.1.0"
+edition = "2021"
+authors = ["Alex Thomson <alexjthomson1882@gmail.com>"]
+
+[lib]
+name = "esp_mdns"
+path = "src/lib.rs"
+
+[dependencies]
+log = { version = "0.4", default-features = false }
+heapless = { version = "0.8", default-features = false }
+esp-idf-sys = { version = "0.35", default-features = false }
+#smoltcp = { version = "0.11", default-features = false }
