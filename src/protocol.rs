@@ -68,6 +68,7 @@ pub enum Rcode {
 /// 
 /// This struct allows structured access to the individual bits and sub-fields
 /// within the 16-bit flags field.
+#[derive(Clone, Copy, PartialEq, Default, Debug)]
 pub struct MdnsFlags(u16);
 
 impl MdnsFlags {
@@ -264,6 +265,22 @@ impl MdnsFlags {
     }
 }
 
+impl From<u16> for MdnsFlags {
+    #[inline]
+    #[must_use]
+    fn from(flags: u16) -> Self {
+        Self(flags)
+    }
+}
+
+impl From<MdnsFlags> for u16 {
+    #[inline]
+    #[must_use]
+    fn from(flags: MdnsFlags) -> Self {
+        flags.0
+    }
+}
+
 /// Represents the header of an [`MdnsPacket`].
 /// 
 /// The mDNS header contains important control information for mDNS packets,
@@ -283,6 +300,7 @@ impl MdnsFlags {
 /// | ARCOUNT | 16          | Number of entries in the additional records section.   |
 /// 
 /// # Fields
+#[derive(PartialEq, Debug)]
 pub struct MdnsHeader {
     /// Transaction ID of the packet.
     /// 
@@ -455,7 +473,9 @@ impl Response {
 }
 
 /// Represents an mDNS packet.
+#[derive(PartialEq, Debug)]
 pub struct MdnsPacket {
+    /// Header for the [`MdnsPacket`].
     header: MdnsHeader,
     /// The questions section of the [`MdnsPacket`].
     questions: Vec<Query>,
@@ -468,5 +488,182 @@ pub struct MdnsPacket {
 }
 
 impl MdnsPacket {
-    // TODO
+    /// Creates a new [`MdnsPacket`].
+    /// 
+    /// This allows full control over the [`MdnsPacket`] creation.
+    /// 
+    /// For a simpler API, prefer using either [`MdnsPacket::new_query`] or
+    /// [`MdnsPacket::new_response`].
+    #[inline]
+    #[must_use]
+    pub fn new(
+        header: MdnsHeader,
+        questions: Vec<Query>,
+        answers: Vec<Response>,
+        authorities: Vec<Response>,
+        additionals: Vec<Response>,
+    ) -> Self {
+        Self {
+            header,
+            questions,
+            answers,
+            authorities,
+            additionals,
+        }
+    }
+
+    /// Creates a new query [`MdnsPacket`] containing the given questions.
+    /// 
+    /// This automatically derives the header flags for the query.
+    #[must_use]
+    pub fn new_query(
+        transaction_id: u16,
+        questions: Vec<Query>
+    ) -> Self {
+        // Create the header:
+        let mut flags = MdnsFlags::new();
+        flags.set_opcode(Opcode::Query);
+        flags.set_qr(false);
+        let total_questions = questions.len() as u16;
+        let header = MdnsHeader {
+            id: transaction_id,
+            flags,
+            total_questions,
+            total_answers: 0,
+            total_authority_records: 0,
+            total_additional_records: 0,
+        };
+        // Create the packet:
+        Self {
+            header,
+            questions,
+            answers: Vec::new(),
+            authorities: Vec::new(),
+            additionals: Vec::new(),
+        }
+    }
+
+    /// Creates a new response [`MdnsPacket`] containing the given answers,
+    /// authorities, and additionals.
+    /// 
+    /// This automatically derives the header flags for a response.
+    #[must_use]
+    pub fn new_response(
+        transaction_id: u16,
+        answers: Vec<Response>,
+        authorities: Vec<Response>,
+        additionals: Vec<Response>,
+    ) -> Self {
+        // Create header:
+        let mut flags = MdnsFlags::new();
+        flags.set_opcode(Opcode::Query);
+        flags.set_qr(true);
+        let total_answers = answers.len() as u16;
+        let total_authority_records = authorities.len() as u16;
+        let total_additional_records = additionals.len() as u16;
+        let header = MdnsHeader {
+            id: transaction_id,
+            flags,
+            total_questions: 0,
+            total_answers,
+            total_authority_records,
+            total_additional_records,
+        };
+        // Create the packet:
+        Self {
+            header,
+            questions: Vec::new(),
+            answers,
+            authorities,
+            additionals,
+        }
+    }
+
+    /// Returns an immutable reference to the header of the [`MdnsPacket`].
+    #[inline]
+    #[must_use]
+    pub fn header(&self) -> &MdnsHeader {
+        &self.header
+    }
+
+    /// Returns an immutable reference to the questions within the
+    /// [`MdnsPacket`].
+    #[inline]
+    #[must_use]
+    pub fn questions(&self) -> &Vec<Query> {
+        &self.questions
+    }
+
+    /// Returns an immutable reference to the answers within the [`MdnsPacket`].
+    #[inline]
+    #[must_use]
+    pub fn answers(&self) -> &Vec<Response> {
+        &self.answers
+    }
+
+    /// Returns an immutable reference to the authorities within the
+    /// [`MdnsPacket`].
+    #[inline]
+    #[must_use]
+    pub fn authorities(&self) -> &Vec<Response> {
+        &self.authorities
+    }
+
+    /// Returns an immutable reference to the additional records within the
+    /// [`MdnsPacket`].
+    #[inline]
+    #[must_use]
+    pub fn additionals(&self) -> &Vec<Response> {
+        &self.additionals
+    }
+
+    /// Adds a new question to the [`MdnsPacket`] and updates the header.
+    pub fn add_question(&mut self, question: Query) {
+        self.questions.push(question);
+        self.header.total_questions = self.questions.len() as u16;
+    }
+
+    /// Adds a set of questions to the [`MdnsPacket`] and updates the header.
+    pub fn add_questions(&mut self, questions: Vec<Query>) {
+        self.questions.extend(questions);
+        self.header.total_questions = self.questions.len() as u16;
+    }
+
+    /// Adds a new answer to the [`MdnsPacket`] and updates the header.
+    pub fn add_answer(&mut self, answer: Response) {
+        self.answers.push(answer);
+        self.header.total_answers = self.answers.len() as u16;
+    }
+
+    /// Adds a set of answers to the [`MdnsPacket`] and updates the header.
+    pub fn add_answers(&mut self, answers: Vec<Response>) {
+        self.answers.extend(answers);
+        self.header.total_answers = self.answers.len() as u16;
+    }
+
+    /// Adds a new authority to the [`MdnsPacket`] and updates the header.
+    pub fn add_authority(&mut self, authority: Response) {
+        self.authorities.push(authority);
+        self.header.total_authority_records = self.authorities.len() as u16;
+    }
+
+    /// Adds new authorities to the [`MdnsPacket`] and updates the header.
+    pub fn add_authorities(&mut self, authorities: Vec<Response>) {
+        self.authorities.extend(authorities);
+        self.header.total_authority_records = self.authorities.len() as u16;
+    }
+
+    /// Adds a new additional record to the [`MdnsPacket`] and updates the
+    /// header.
+    pub fn add_additional(&mut self, additional: Response) {
+        self.additionals.push(additional);
+        self.header.total_additional_records = self.additionals.len() as u16;
+    }
+
+    /// Adds a set of additional records to the [`MdnsPacket`] and updates the
+    /// header.
+    pub fn add_additionals(&mut self, additionals: Vec<Response>) {
+        self.additionals.extend(additionals);
+        self.header.total_additional_records = self.additionals.len() as u16;
+    }
 }
