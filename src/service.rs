@@ -24,7 +24,7 @@ impl core::fmt::Display for MdnsServiceError {
     }
 }
 
-/// A heapless mDNS TXT record storage that holds a maximum of `N` records.
+/// A heapless mDNS TXT record storage that holds a maximum of `16` records.
 /// 
 /// TXT records are used to store additional information about a service in the
 /// form of key-value pairs. These records provide metadata about the service
@@ -52,11 +52,11 @@ impl core::fmt::Display for MdnsServiceError {
 /// secure=true
 /// description=ESP32 Web Service
 /// ```
-pub struct MdnsTxtRecords<const N: usize> {
-    records: FnvIndexMap<String, String, N>,
+pub struct TxtRecords {
+    records: FnvIndexMap<String, String, 16>,
 }
 
-impl<const N: usize> Default for MdnsTxtRecords<N> {
+impl Default for TxtRecords {
     #[inline]
     #[must_use]
     fn default() -> Self {
@@ -64,7 +64,7 @@ impl<const N: usize> Default for MdnsTxtRecords<N> {
     }
 }
 
-impl<const N: usize> MdnsTxtRecords<N> {
+impl TxtRecords {
     /// Creates a new, empty set of mDNS TXT records.
     #[inline]
     #[must_use]
@@ -138,7 +138,7 @@ impl<const N: usize> MdnsTxtRecords<N> {
 }
 
 /// A service that can be advertised via mDNS.
-pub struct MdnsService<const N: usize> {
+pub struct MdnsService {
     /// Name of the mDNS service.
     /// 
     /// This field stores the instance name of the mDNS service, which is a
@@ -183,17 +183,17 @@ pub struct MdnsService<const N: usize> {
     /// mDNS TXT records for the service.
     /// 
     /// For more information, see [`MdnsTxtRecords`].
-    txt_records: MdnsTxtRecords<N>,
+    txt_records: TxtRecords,
 }
 
-impl<const N: usize> MdnsService<N> {
+impl MdnsService {
     /// Creates a new [`MdnsService`].
     #[inline(always)]
     #[must_use]
     pub fn new(
         name: &str,
         port: u16,
-        txt_records: MdnsTxtRecords<N>,
+        txt_records: TxtRecords,
     ) -> Self {
         Self {
             name: String::from(name),
@@ -226,7 +226,7 @@ impl<const N: usize> MdnsService<N> {
     pub fn new_with_unique_name(
         name_prefix: &str,
         port: u16,
-        txt_records: MdnsTxtRecords<N>,
+        txt_records: TxtRecords,
     ) -> Self {
         let mut mac: [u8; 6] = [0; 6];
         unsafe {
@@ -262,7 +262,7 @@ impl<const N: usize> MdnsService<N> {
     /// the [`MdnsService`].
     #[inline]
     #[must_use]
-    pub fn records(&self) -> &MdnsTxtRecords<N> {
+    pub fn records(&self) -> &TxtRecords {
         &self.txt_records
     }
 
@@ -270,7 +270,7 @@ impl<const N: usize> MdnsService<N> {
     /// [`MdnsService`].
     #[inline]
     #[must_use]
-    pub fn records_mut(&mut self) -> &mut MdnsTxtRecords<N> {
+    pub fn records_mut(&mut self) -> &mut TxtRecords {
         &mut self.txt_records
     }
 
