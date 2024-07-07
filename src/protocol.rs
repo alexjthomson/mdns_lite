@@ -3,8 +3,6 @@
 //! packets, queries, and responses. It interacts with the network module to
 //! receive raw data and convert it into meaningful mDNS packets and vice versa.
 
-use alloc::{string::String, vec::Vec};
-
 /// Describes the `OPCODE` field in [`MdnsFlags`].
 /// 
 /// This field indicates the kind of query contained within an [`MdnsPacket`].
@@ -324,6 +322,29 @@ pub struct MdnsHeader {
     total_additional_records: u16,
 }
 
+impl MdnsHeader {
+    /// Converts the [`MdnsHeader`] into raw bytes that can form the start of an
+    /// mDNS packet.
+    #[must_use]
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let flags = self.flags.0;
+        vec![
+            (self.id >> 8) as u8,
+            (self.id & 0xff) as u8,
+            (flags >> 8) as u8,
+            (flags & 0xff) as u8,
+            (self.total_questions >> 8) as u8,
+            (self.total_questions & 0xff) as u8,
+            (self.total_answers >> 8) as u8,
+            (self.total_answers & 0xff) as u8,
+            (self.total_authority_records >> 8) as u8,
+            (self.total_authority_records & 0xff) as u8,
+            (self.total_additional_records >> 8) as u8,
+            (self.total_additional_records & 0xff) as u8,
+        ]
+    }
+}
+
 /// Represents the DNS types in mDNS.
 /// 
 /// This represents the type of record being queries or responded to. Each
@@ -378,6 +399,23 @@ pub enum DnsType {
     Unknown(u16),
 }
 
+impl DnsType {
+    /// Converts the [`DnsType`] into a slice.
+    /// 
+    /// This can be used to construct mDNS packets.
+    #[must_use]
+    pub fn to_slice(&self) -> &[u8; 2] {
+        match self {
+            Self::A    => &[0x00, 0x01],
+            Self::AAAA => &[0x00, 0x1C],
+            Self::PTR  => &[0x00, 0x0C],
+            Self::SRV  => &[0x00, 0x21],
+            Self::TXT  => &[0x00, 0x10],
+            _ => unimplemented!(), // TODO
+        }
+    }
+}
+
 /// Represents the DNS classes in mDNS.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum DnsClass {
@@ -406,14 +444,39 @@ pub enum DnsClass {
     Unknown(u16),
 }
 
+impl DnsClass {
+    /// Converts the [`DnsClass`] into a slice.
+    /// 
+    /// This can be used to construct mDNS packets.
+    pub fn to_slice(&self) -> &[u8; 2] {
+        match self {
+            Self::IN => &[0x00, 0x01],
+            _ => unimplemented!(), // TODO
+        }
+    }
+}
+
 /// Represents an mDNS query.
+/// 
+/// mDNS (Multicast DNS) queries are used to discover services and devices on a
+/// local network. This struct encapsulates a single mDNS query.
 #[derive(PartialEq, Debug)]
 pub struct Query {
     /// The name being queried.
+    /// 
+    /// This is the domain name or service name that the query is trying to
+    /// resolve. For example, in mDNS, it could be a service type like
+    /// `_http._tcp.local`, or a specific instance of a service like
+    /// `my_esp32._http._tcp.local`.
     name: String,
     /// The type of the query.
+    /// 
+    /// This field specifies the type of DNS record being requested.
     query_type: DnsType,
-    /// The class of the query, typically IN (Internet).
+    /// The class of the query.
+    /// 
+    /// Typically IN (Internet), which indicates the query is for Internet use.
+    /// Other classes exist but are rarely used in common scenarios.
     query_class: DnsClass,
 }
 
@@ -665,5 +728,35 @@ impl MdnsPacket {
     pub fn add_additionals(&mut self, additionals: Vec<Response>) {
         self.additionals.extend(additionals);
         self.header.total_additional_records = self.additionals.len() as u16;
+    }
+
+    /// Converts the [`MdnsPacket`] into raw bytes that can be sent as a packet.
+    #[must_use]
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut packet = self.header.to_bytes();
+        fn write_queries(packet: &mut Vec<u8>, queries: &[Query]) {
+            for query in queries.iter() {
+                packet.extend_from_slice(query.name.as_bytes());
+                packet.push(0); // Null byte to end of string
+                packet.extend_from_slice(query.query_type.to_slice());
+                packet.extend_from_slice(query.query_class.to_slice());
+            }
+        }
+        fn write_responses(packet: &mut Vec<u8>, responses: &[Response]) {
+            for response in responses.iter() {
+                packet.extend_from_slice(response.name.as_bytes());
+                packet.push(0); // Null byte to end of string
+                packet.extend_from_slice(response.response_type.to_slice());
+                packet.extend_from_slice(response.response_class.to_slice());
+                packet.extend_from_slice(&response.ttl.to_be_bytes());
+                packet.extend_from_slice(&(response.data.len() as u16).to_be_bytes());
+                packet.extend_from_slice(&response.data);
+            }
+        }
+        write_queries(&mut packet, &self.questions);
+        write_responses(&mut packet, &self.answers);
+        write_responses(&mut packet, &self.authorities);
+        write_responses(&mut packet, &self.additionals);
+        packet
     }
 }

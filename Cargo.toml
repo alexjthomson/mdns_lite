@@ -12,5 +12,6 @@ path = "src/lib.rs"
 [dependencies]
 log = { version = "0.4", default-features = false }
 heapless = { version = "0.8", default-features = false }
-esp-idf-sys = { version = "0.35", default-features = false }
+esp-idf-sys = { version = "0.35", default-features = false, features = ["std"]}
+#esp-idf-hal = { version = "0.44", default-features = false }
 #smoltcp = { version = "0.11", default-features = false }

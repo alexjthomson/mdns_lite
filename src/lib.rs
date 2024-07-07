@@ -10,11 +10,7 @@
 //! - Respond to mDNS queries with service information.
 //! - Support for adding TXT records with service metadata.
 
-#![no_std]
 #![no_main]
-#![feature(alloc_error_handler)]
-
-extern crate alloc;
 
 pub mod network;
 pub mod protocol;

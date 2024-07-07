@@ -2,7 +2,6 @@
 //! This module contains high-level service-related logic and interacts with the
 //! protocol and network modules to handle mDNS operations.
 
-use alloc::{string::String, vec::Vec};
 use esp_idf_sys::esp_efuse_mac_get_default;
 use heapless::FnvIndexMap;
 use core::fmt::Write;
@@ -147,10 +146,10 @@ pub struct MdnsService {
     /// of the same service type.
     /// 
     /// ## Formatting
-    /// The `name` should be a human-readable string that uniquely identifies
-    /// the service instance within the local network. It should be descriptive
-    /// enough to allow users to differentiate it from other services of the
-    /// same type.
+    /// The `instance_name` should be a human-readable string that uniquely
+    /// identifies the service instance within the local network. It should be
+    /// descriptive enough to allow users to differentiate it from other
+    /// services of the same type.
     /// 
     /// ### Examples
     /// - `lightbulb_a3fb01`
@@ -163,7 +162,20 @@ pub struct MdnsService {
     /// - It is good practice to keep the name concise, yet descriptive.
     /// - The `name` should be unique within the scope of the service type on
     ///   the local network to avoid conflicts.
-    name: String,
+    instance_name: String,
+    /// The type of service, including the protocol.
+    /// 
+    /// This is typically formatted as: `_service._protocol`. For example:
+    /// `_http._tcp`.
+    service_type: String,
+    /// The domain under which the service is registered.
+    /// 
+    /// For mDNS, this is typically `.local`, but custom domains can be used.
+    /// For example: `.internal`.
+    /// 
+    /// This should contain the `.` character at the start, then be followed by
+    /// lowercase alphabetic characters.
+    service_domain: String,
     /// Port number on which the service is running.
     /// 
     /// This field specifies the port number where the service can be accessed.
@@ -187,16 +199,22 @@ pub struct MdnsService {
 }
 
 impl MdnsService {
+    pub const DEFAULT_DOMAIN: &'static str = ".local";
+
     /// Creates a new [`MdnsService`].
     #[inline(always)]
     #[must_use]
     pub fn new(
-        name: &str,
+        instance_name: &str,
+        service_type: &str,
+        service_domain: &str,
         port: u16,
         txt_records: TxtRecords,
     ) -> Self {
         Self {
-            name: String::from(name),
+            instance_name: String::from(instance_name),
+            service_type: String::from(service_type),
+            service_domain: String::from(service_domain),
             port,
             txt_records,
         }
@@ -204,10 +222,10 @@ impl MdnsService {
 
     /// Creates a new [`MdnsService`] with a more unique name.
     /// 
-    /// This function takes in a `name_prefix`, which will be combined with a
-    /// unique string of text generated from information about the device. This
-    /// allows devices to be flashed with the same code, but each have unique
-    /// names.
+    /// This function takes in a `instance_name_prefix`, which will be combined
+    /// with a unique string of text generated from information about the
+    /// device. This allows devices to be flashed with the same code, but each
+    /// have unique names.
     /// 
     /// ## Example
     /// For example, if you are creating a motion sensor device, you might want
@@ -224,7 +242,9 @@ impl MdnsService {
     /// ```
     #[must_use]
     pub fn new_with_unique_name(
-        name_prefix: &str,
+        instance_name_prefix: &str,
+        service_type: &str,
+        service_domain: &str,
         port: u16,
         txt_records: TxtRecords,
     ) -> Self {
@@ -232,13 +252,15 @@ impl MdnsService {
         unsafe {
             esp_efuse_mac_get_default(mac.as_mut_ptr());
         }
-        let mut unique_name = String::from(name_prefix);
+        let mut unique_name = String::from(instance_name_prefix);
         unique_name.push('_');
         for byte in mac {
             write!(&mut unique_name, "{:02x}", byte).unwrap();
         }
         Self {
-            name: unique_name,
+            instance_name: unique_name,
+            service_type: String::from(service_type),
+            service_domain: String::from(service_domain),
             port,
             txt_records,
         }
@@ -247,8 +269,22 @@ impl MdnsService {
     /// Returns the name of the [`MdnsService`].
     #[inline]
     #[must_use]
-    pub fn name(&self) -> &String {
-        &self.name
+    pub fn instance_name(&self) -> &String {
+        &self.instance_name
+    }
+
+    /// Returns the type of the [`MdnsService`].
+    #[inline]
+    #[must_use]
+    pub fn service_type(&self) -> &String {
+        &self.service_type
+    }
+
+    /// Returns the domain of the [`MdnsService`].
+    #[inline]
+    #[must_use]
+    pub fn service_domain(&self) -> &String {
+        &self.service_domain
     }
 
     /// Returns the port that the [`MdnsService`] exists at.
