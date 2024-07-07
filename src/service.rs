@@ -2,13 +2,11 @@
 //! This module contains high-level service-related logic and interacts with the
 //! protocol and network modules to handle mDNS operations.
 
-use esp_idf_sys::esp_efuse_mac_get_default;
 use heapless::FnvIndexMap;
-use core::fmt::Write;
 
 /// Defines errors that can occur when interacting with [`MdnsService`] or
 /// [`MdnsTxtRecords`].
-#[derive(Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum MdnsServiceError {
     /// Indicates that there are not more spaces on the underlying
     /// [`MdnsTxtRecords`] instance.
@@ -51,6 +49,7 @@ impl core::fmt::Display for MdnsServiceError {
 /// secure=true
 /// description=ESP32 Web Service
 /// ```
+#[derive(PartialEq, Debug)]
 pub struct TxtRecords {
     records: FnvIndexMap<String, String, 16>,
 }
@@ -71,6 +70,28 @@ impl TxtRecords {
         Self {
             records: FnvIndexMap::new(),
         }
+    }
+
+    /// Returns the number of records within the [`TxtRecords`].
+    #[inline]
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.records.len()
+    }
+
+    /// Returns `true` if the [`TxtRecords`] contains no records; otherwise,
+    /// returns `false`.
+    #[inline]
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.records.is_empty()
+    }
+
+    /// Returns the capacity of the the [`TxtRecords`].
+    #[inline]
+    #[must_use]
+    pub fn capacity(&self) -> usize {
+        self.records.capacity()
     }
 
     /// Adds a new TXT record.
@@ -220,52 +241,6 @@ impl MdnsService {
         }
     }
 
-    /// Creates a new [`MdnsService`] with a more unique name.
-    /// 
-    /// This function takes in a `instance_name_prefix`, which will be combined
-    /// with a unique string of text generated from information about the
-    /// device. This allows devices to be flashed with the same code, but each
-    /// have unique names.
-    /// 
-    /// ## Example
-    /// For example, if you are creating a motion sensor device, you might want
-    /// the device to be called `motion_sensor`. This becomes a problem when you
-    /// introduce more than one device. Using this function, you could create an
-    /// mDNS service for the device with a unique name:
-    /// 
-    /// ```
-    /// let service = MdnsService::new_with_unique_name(
-    ///     "motion_sensor",
-    ///     3000,
-    ///     MdnsTxtRecords::new(),
-    /// );
-    /// ```
-    #[must_use]
-    pub fn new_with_unique_name(
-        instance_name_prefix: &str,
-        service_type: &str,
-        service_domain: &str,
-        port: u16,
-        txt_records: TxtRecords,
-    ) -> Self {
-        let mut mac: [u8; 6] = [0; 6];
-        unsafe {
-            esp_efuse_mac_get_default(mac.as_mut_ptr());
-        }
-        let mut unique_name = String::from(instance_name_prefix);
-        unique_name.push('_');
-        for byte in mac {
-            write!(&mut unique_name, "{:02x}", byte).unwrap();
-        }
-        Self {
-            instance_name: unique_name,
-            service_type: String::from(service_type),
-            service_domain: String::from(service_domain),
-            port,
-            txt_records,
-        }
-    }
-
     /// Returns the name of the [`MdnsService`].
     #[inline]
     #[must_use]
@@ -347,4 +322,113 @@ impl MdnsService {
     ) -> Option<&String> {
         self.txt_records.get(key)
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_txt_records() {
+        let records = TxtRecords::new();
+        assert!(records.is_empty());
+        assert_eq!(records.len(), 0);
+    }
+
+    #[test]
+    fn test_default_txt_records() {
+        let new = TxtRecords::new();
+        let default = TxtRecords::default();
+        assert_eq!(new, default);
+    }
+
+    #[test]
+    fn test_add_txt_records() {
+        // Create new records:
+        let mut records = TxtRecords::new();
+        assert_eq!(records.len(), 0);
+
+        // Create the version record:
+        records.add("version", "1.0").unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records.get("version"), Some(&"1.0".to_owned()));
+
+        // Override the version record:
+        records.add("version", "1.1").unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records.get("version"), Some(&"1.1".to_owned()));
+
+        // Add a new record:
+        records.add("path", "/api").unwrap();
+        assert_eq!(records.len(), 2);
+        assert_eq!(records.get("version"), Some(&"1.1".to_owned()));
+        assert_eq!(records.get("path"), Some(&"/api".to_owned()));
+
+        // Add more records until the records reaches its capacity:
+        for i in 2..records.capacity() {
+            records.add(format!("test_record_{i}").as_str(), "test").unwrap();
+        }
+        // Confirm that the length matches the capacity:
+        assert_eq!(records.len(), records.capacity());
+
+        // Add one more record and expect it to fail:
+        assert_eq!(
+            records.add("this_should_fail", "too_many_elements").err(),
+            Some(MdnsServiceError::TxtRecordsFull)
+        );
+    }
+
+    #[test]
+    fn test_remove_txt_records() {
+        // Create records:
+        let mut records = TxtRecords::new();
+        records.add("record_0", "value_0").unwrap();
+        records.add("record_1", "value_1").unwrap();
+        records.add("record_2", "value_2").unwrap();
+        records.add("record_3", "value_3").unwrap();
+        assert_eq!(records.len(), 4);
+
+        // Remove record:
+        assert_eq!(records.remove("record_2"), Some("value_2".to_owned()));
+        assert_eq!(records.len(), 3);
+        assert_eq!(records.get("record_1"), Some(&"value_1".to_owned()));
+        assert_eq!(records.get("record_3"), Some(&"value_3".to_owned()));
+        assert_eq!(records.get("record_4"), Some(&"value_4".to_owned()));
+
+        // Remove non-existent record:
+        assert_eq!(records.remove("record_2"), None);
+        assert_eq!(records.len(), 3);
+        assert_eq!(records.remove("non_existent"), None);
+        assert_eq!(records.len(), 3);
+
+        // Remove remaining records:
+        assert_eq!(records.remove("record_4"), Some("value_4".to_owned()));
+        assert_eq!(records.len(), 2);
+        assert_eq!(records.remove("record_1"), Some("value_1".to_owned()));
+        assert_eq!(records.len(), 1);
+        assert_eq!(records.remove("record_3"), Some("value_3".to_owned()));
+        assert_eq!(records.len(), 0);
+    }
+
+    #[test]
+    fn test_serialise_txt_records() {
+        // Create empty records:
+        let mut records = TxtRecords::new();
+        assert_eq!(records.len(), 0);
+        assert_eq!(records.serialise(), Vec::new());
+        
+        // Populate records:
+        records.add("version", "0.1.0").unwrap();
+        records.add("path", "/api").unwrap();
+        records.add("type", "sensor").unwrap();
+        assert_eq!(records.len(), 3);
+
+        // Validate serialised records:
+        assert_eq!(
+            records.serialise(),
+            b"version=0.1.0\x00path=/api\x00type=sensor\x00".to_vec(),
+        );
+    }
+
+    // TODO: Add unit tests for other types here
 }
