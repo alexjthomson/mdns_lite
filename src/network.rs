@@ -142,15 +142,17 @@ impl MdnsBroadcaster {
                     if total_services > 0 {
                         let mut questions = Vec::new();
                         for service in services.iter() {
+                            let mut labels = Vec::new();
+                            labels.push(service.instance_name().clone());
+                            labels.extend(service.service_type().split('.').map(|s| s.to_string()));
+                            labels.push(service.service_domain().clone());
+
                             let query = Query::new(
-                                DnsName::new(vec![
-                                    service.instance_name().clone(),
-                                    service.service_type().clone(),
-                                    service.service_domain().clone(),
-                                ]),
+                                DnsName::new(labels),
                                 DnsType::PTR,
                                 DnsClass::IN,
                             );
+                            
                             questions.push(query);
                         }
                         let packet = MdnsPacket::new_query(

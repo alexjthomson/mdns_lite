@@ -7,8 +7,8 @@ fn main() {
     let mut broadcaster = MdnsBroadcaster::default();
     broadcaster.register_service(
         "example_service",
-        "_tcp",
-        80,
+        "_http._tcp",
+        80, 
     );
 
     // Start broadcaster:
