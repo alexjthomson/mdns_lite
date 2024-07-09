@@ -10,6 +10,6 @@ for a central DNS server.
 - Support for adding TXT records with service metadata.
 
 ## Todo
-- [ ] Add unit tests - The project does not compile when trying to execute unit tests.
+- [ ] Add unit tests.
 - [ ] Implement MdnsBroadcaster, this will periodically broadcast the mDNS
   service and will also respond to queries about it.
