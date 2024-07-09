@@ -298,7 +298,7 @@ impl From<MdnsFlags> for u16 {
 /// | ARCOUNT | 16          | Number of entries in the additional records section.   |
 /// 
 /// # Fields
-#[derive(PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct MdnsHeader {
     /// Transaction ID of the packet.
     /// 
@@ -399,19 +399,74 @@ pub enum DnsType {
     Unknown(u16),
 }
 
-impl DnsType {
-    /// Converts the [`DnsType`] into a slice.
-    /// 
-    /// This can be used to construct mDNS packets.
+impl From<u16> for DnsType {
     #[must_use]
-    pub fn to_slice(&self) -> &[u8; 2] {
-        match self {
-            Self::A    => &[0x00, 0x01],
-            Self::AAAA => &[0x00, 0x1C],
-            Self::PTR  => &[0x00, 0x0C],
-            Self::SRV  => &[0x00, 0x21],
-            Self::TXT  => &[0x00, 0x10],
-            _ => unimplemented!(), // TODO
+    fn from(id: u16) -> Self {
+        match id {
+            0x0001 => Self::A,
+            0x001c => Self::AAAA,
+            0x0005 => Self::CNAME,
+            0x000f => Self::MX,
+            0x000c => Self::PTR,
+            0x0006 => Self::SOA,
+            0x0010 => Self::TXT,
+            0x0021 => Self::SRV,
+            0x00ff => Self::ANY,
+            _ => Self::Unknown(id),
+        }
+    }
+}
+
+impl From<DnsType> for u16 {
+    #[must_use]
+    fn from(dns_type: DnsType) -> Self {
+        match dns_type {
+            DnsType::A     => 0x0001,
+            DnsType::AAAA  => 0x001c,
+            DnsType::CNAME => 0x0005,
+            DnsType::MX    => 0x000f,
+            DnsType::PTR   => 0x000c,
+            DnsType::SOA   => 0x0006,
+            DnsType::TXT   => 0x0010,
+            DnsType::SRV   => 0x0021,
+            DnsType::ANY   => 0x00ff,
+            DnsType::Unknown(value) => value,
+        }
+    }
+}
+
+impl From<DnsType> for [u8; 2] {
+    #[must_use]
+    fn from(dns_class: DnsType) -> Self {
+        match dns_class {
+            DnsType::A     => [0x00, 0x01],
+            DnsType::AAAA  => [0x00, 0x1c],
+            DnsType::CNAME => [0x00, 0x05],
+            DnsType::MX    => [0x00, 0x0f],
+            DnsType::PTR   => [0x00, 0x0c],
+            DnsType::SOA   => [0x00, 0x06],
+            DnsType::TXT   => [0x00, 0x10],
+            DnsType::SRV   => [0x00, 0x21],
+            DnsType::ANY   => [0x00, 0xff],
+            DnsType::Unknown(value) => [(value >> 8) as u8, (value & 0xff) as u8],
+        }
+    }
+}
+
+impl From<[u8; 2]> for DnsType {
+    #[must_use]
+    fn from(slice: [u8; 2]) -> Self {
+        match slice {
+            [0x00, 0x01] => Self::A,
+            [0x00, 0x1c] => Self::AAAA,
+            [0x00, 0x05] => Self::CNAME,
+            [0x00, 0x0f] => Self::MX,
+            [0x00, 0x0c] => Self::PTR,
+            [0x00, 0x06] => Self::SOA,
+            [0x00, 0x10] => Self::TXT,
+            [0x00, 0x21] => Self::SRV,
+            [0x00, 0xff] => Self::ANY,
+            _ => Self::Unknown(u16::from_be_bytes(slice)),
         }
     }
 }
@@ -444,14 +499,54 @@ pub enum DnsClass {
     Unknown(u16),
 }
 
-impl DnsClass {
-    /// Converts the [`DnsClass`] into a slice.
-    /// 
-    /// This can be used to construct mDNS packets.
-    pub fn to_slice(&self) -> &[u8; 2] {
-        match self {
-            Self::IN => &[0x00, 0x01],
-            _ => unimplemented!(), // TODO
+impl From<u16> for DnsClass {
+    #[must_use]
+    fn from(id: u16) -> Self {
+        match id {
+            0x0001 => Self::IN,
+            0x0003 => Self::CH,
+            0x0004 => Self::HS,
+            0x00ff => Self::ANY,
+            _ => Self::Unknown(id),
+        }
+    }
+}
+
+impl From<DnsClass> for u16 {
+    #[must_use]
+    fn from(dns_class: DnsClass) -> Self {
+        match dns_class {
+            DnsClass::IN  => 0x0001,
+            DnsClass::CH  => 0x0003,
+            DnsClass::HS  => 0x0004,
+            DnsClass::ANY => 0x00ff,
+            DnsClass::Unknown(id) => id,
+        }
+    }
+}
+
+impl From<DnsClass> for [u8; 2] {
+    #[must_use]
+    fn from(dns_class: DnsClass) -> Self {
+        match dns_class {
+            DnsClass::IN  => [0x00, 0x01],
+            DnsClass::CH  => [0x00, 0x03],
+            DnsClass::HS  => [0x00, 0x04],
+            DnsClass::ANY => [0x00, 0xff],
+            DnsClass::Unknown(id) => [(id >> 8) as u8, (id & 0xff) as u8],
+        }
+    }
+}
+
+impl From<[u8; 2]> for DnsClass {
+    #[must_use]
+    fn from(slice: [u8; 2]) -> Self {
+        match slice {
+            [0x00, 0x01] => Self::IN,
+            [0x00, 0x03] => Self::CH,
+            [0x00, 0x04] => Self::HS,
+            [0x00, 0xff] => Self::ANY,
+            _ => Self::Unknown(u16::from_be_bytes(slice)),
         }
     }
 }
@@ -460,7 +555,7 @@ impl DnsClass {
 /// 
 /// mDNS (Multicast DNS) queries are used to discover services and devices on a
 /// local network. This struct encapsulates a single mDNS query.
-#[derive(PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Query {
     /// The name being queried.
     /// 
@@ -515,7 +610,7 @@ impl Query {
 }
 
 /// Represents an mDNS response.
-#[derive(PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Response {
     /// The name associated with this response.
     name: String,
@@ -532,7 +627,81 @@ pub struct Response {
 }
 
 impl Response {
-    // TODO
+    /// Creates a new mDNS [`Response`].
+    #[inline]
+    #[must_use]
+    pub fn new(
+        name: &str,
+        response_type: DnsType,
+        response_class: DnsClass,
+        ttl: u32,
+        data_length: u16,
+        data: Vec<u8>,
+    ) -> Self {
+        Self {
+            name: name.to_owned(),
+            response_type,
+            response_class,
+            ttl,
+            data_length,
+            data,
+        }
+    }
+
+    /// Returns the name associated with this response.
+    #[inline]
+    #[must_use]
+    pub fn name(&self) -> &String {
+        &self.name
+    }
+
+    /// Returns the type of the response.
+    #[inline]
+    #[must_use]
+    pub fn response_type(&self) -> &DnsType {
+        &self.response_type
+    }
+
+    /// Returns the class of the response.
+    #[inline]
+    #[must_use]
+    pub fn response_class(&self) -> &DnsClass {
+        &self.response_class
+    }
+
+    /// Returns the time to live for this response.
+    #[inline]
+    #[must_use]
+    pub fn ttl(&self) -> u32 {
+        self.ttl
+    }
+
+    /// Returns the data length of this response.
+    #[inline]
+    #[must_use]
+    pub fn data_length(&self) -> u16 {
+        self.data_length
+    }
+
+    /// Returns the actual data of the response.
+    #[inline]
+    #[must_use]
+    pub fn data(&self) -> &Vec<u8> {
+        &self.data
+    }
+
+    /// Sets the time to live for this response.
+    #[inline]
+    pub fn set_ttl(&mut self, ttl: u32) {
+        self.ttl = ttl;
+    }
+
+    /// Sets the data for this response.
+    #[inline]
+    pub fn set_data(&mut self, data: Vec<u8>) {
+        self.data_length = data.len() as u16;
+        self.data = data;
+    }
 }
 
 /// Represents an mDNS packet.
@@ -738,16 +907,16 @@ impl MdnsPacket {
             for query in queries.iter() {
                 packet.extend_from_slice(query.name.as_bytes());
                 packet.push(0); // Null byte to end of string
-                packet.extend_from_slice(query.query_type.to_slice());
-                packet.extend_from_slice(query.query_class.to_slice());
+                packet.extend_from_slice(&Into::<[u8; 2]>::into(query.query_type));
+                packet.extend_from_slice(&Into::<[u8; 2]>::into(query.query_class));
             }
         }
         fn write_responses(packet: &mut Vec<u8>, responses: &[Response]) {
             for response in responses.iter() {
                 packet.extend_from_slice(response.name.as_bytes());
                 packet.push(0); // Null byte to end of string
-                packet.extend_from_slice(response.response_type.to_slice());
-                packet.extend_from_slice(response.response_class.to_slice());
+                packet.extend_from_slice(&Into::<[u8; 2]>::into(response.response_type));
+                packet.extend_from_slice(&Into::<[u8; 2]>::into(response.response_class));
                 packet.extend_from_slice(&response.ttl.to_be_bytes());
                 packet.extend_from_slice(&(response.data.len() as u16).to_be_bytes());
                 packet.extend_from_slice(&response.data);
@@ -758,5 +927,249 @@ impl MdnsPacket {
         write_responses(&mut packet, &self.authorities);
         write_responses(&mut packet, &self.additionals);
         packet
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_opcode() {
+        assert_eq!(Opcode::Query, Opcode::Query);
+        assert_eq!(Opcode::IQuery, Opcode::IQuery);
+        assert_eq!(Opcode::Status, Opcode::Status);
+        assert_eq!(Opcode::Unknown(9), Opcode::Unknown(9));
+    }
+
+    #[test]
+    fn test_rcode() {
+        assert_eq!(Rcode::NoError, Rcode::NoError);
+        assert_eq!(Rcode::FormatError, Rcode::FormatError);
+        assert_eq!(Rcode::ServerFailure, Rcode::ServerFailure);
+        assert_eq!(Rcode::NameError, Rcode::NameError);
+        assert_eq!(Rcode::NotImplemented, Rcode::NotImplemented);
+        assert_eq!(Rcode::Refused, Rcode::Refused);
+        assert_eq!(Rcode::Unknown(7), Rcode::Unknown(7));
+    }
+
+    #[test]
+    fn test_mdns_flags() {
+        let mut flags = MdnsFlags::new();
+        assert!(!flags.qr());
+        flags.set_qr(true);
+        assert!(flags.qr());
+        flags.set_qr(false);
+        assert!(!flags.qr());
+
+        assert_eq!(flags.opcode(), Opcode::Query);
+        flags.set_opcode(Opcode::IQuery);
+        assert_eq!(flags.opcode(), Opcode::IQuery);
+        flags.set_opcode(Opcode::Status);
+        assert_eq!(flags.opcode(), Opcode::Status);
+        flags.set_opcode(Opcode::Unknown(9));
+        assert_eq!(flags.opcode(), Opcode::Unknown(9));
+
+        assert!(!flags.aa());
+        flags.set_aa(true);
+        assert!(flags.aa());
+        flags.set_aa(false);
+        assert!(!flags.aa());
+
+        assert!(!flags.tc());
+        flags.set_tc(true);
+        assert!(flags.tc());
+        flags.set_tc(false);
+        assert!(!flags.tc());
+
+        assert!(!flags.rd());
+        flags.set_rd(true);
+        assert!(flags.rd());
+        flags.set_rd(false);
+        assert!(!flags.rd());
+
+        assert!(!flags.ra());
+        flags.set_ra(true);
+        assert!(flags.ra());
+        flags.set_ra(false);
+        assert!(!flags.ra());
+
+        assert_eq!(flags.rcode(), Rcode::NoError);
+        flags.set_rcode(Rcode::FormatError);
+        assert_eq!(flags.rcode(), Rcode::FormatError);
+        flags.set_rcode(Rcode::ServerFailure);
+        assert_eq!(flags.rcode(), Rcode::ServerFailure);
+        flags.set_rcode(Rcode::NameError);
+        assert_eq!(flags.rcode(), Rcode::NameError);
+        flags.set_rcode(Rcode::NotImplemented);
+        assert_eq!(flags.rcode(), Rcode::NotImplemented);
+        flags.set_rcode(Rcode::Refused);
+        assert_eq!(flags.rcode(), Rcode::Refused);
+        flags.set_rcode(Rcode::Unknown(7));
+        assert_eq!(flags.rcode(), Rcode::Unknown(7));
+    }
+
+    #[test]
+    fn test_mdns_flags_from_u16() {
+        let flags = MdnsFlags::from(0x8000);
+        assert!(flags.qr());
+
+        let flags: u16 = flags.into();
+        assert_eq!(flags, 0x8000);
+    }
+
+    #[test]
+    fn test_mdns_header() {
+        let header = MdnsHeader {
+            id: 1234,
+            flags: MdnsFlags::new(),
+            total_questions: 1,
+            total_answers: 2,
+            total_authority_records: 3,
+            total_additional_records: 4,
+        };
+
+        let bytes = header.to_bytes();
+        assert_eq!(bytes, vec![
+            0x04, 0xd2, // ID
+            0x00, 0x00, // Flags
+            0x00, 0x01, // QDCOUNT
+            0x00, 0x02, // ANCOUNT
+            0x00, 0x03, // NSCOUNT
+            0x00, 0x04, // ARCOUNT
+        ]);
+    }
+
+    #[test]
+    fn test_dns_type() {
+        assert_eq!(DnsType::from(0x0001), DnsType::A);
+        assert_eq!(u16::from(DnsType::A), 0x0001);
+        assert_eq!(<[u8; 2]>::from(DnsType::A), [0x00, 0x01]);
+        assert_eq!(DnsType::from([0x00, 0x01]), DnsType::A);
+    }
+
+    #[test]
+    fn test_dns_class() {
+        assert_eq!(DnsClass::from(0x0001), DnsClass::IN);
+        assert_eq!(u16::from(DnsClass::IN), 0x0001);
+        assert_eq!(<[u8; 2]>::from(DnsClass::IN), [0x00, 0x01]);
+        assert_eq!(DnsClass::from([0x00, 0x01]), DnsClass::IN);
+    }
+
+    #[test]
+    fn test_query() {
+        let query = Query::new(
+            "example.local".to_string(),
+            DnsType::A,
+            DnsClass::IN,
+        );
+
+        assert_eq!(query.name(), "example.local");
+        assert_eq!(query.query_type(), DnsType::A);
+        assert_eq!(query.query_class(), DnsClass::IN);
+    }
+
+    #[test]
+    fn test_response() {
+        let mut response = Response::new(
+            "example.local",
+            DnsType::A,
+            DnsClass::IN,
+            120,
+            4,
+            vec![127, 0, 0, 1],
+        );
+
+        assert_eq!(response.name(), "example.local");
+        assert_eq!(response.response_type(), &DnsType::A);
+        assert_eq!(response.response_class(), &DnsClass::IN);
+        assert_eq!(response.ttl(), 120);
+        assert_eq!(response.data_length(), 4);
+        assert_eq!(response.data(), &vec![127, 0, 0, 1]);
+
+        response.set_ttl(240);
+        assert_eq!(response.ttl(), 240);
+
+        response.set_data(vec![192, 168, 0, 1]);
+        assert_eq!(response.data_length(), 4);
+        assert_eq!(response.data(), &vec![192, 168, 0, 1]);
+    }
+
+    #[test]
+    fn test_mdns_packet() {
+        let header = MdnsHeader {
+            id: 1234,
+            flags: MdnsFlags::new(),
+            total_questions: 0,
+            total_answers: 0,
+            total_authority_records: 0,
+            total_additional_records: 0,
+        };
+
+        let mut packet = MdnsPacket::new(
+            header,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        );
+        assert_eq!(packet.header(), &header);
+        assert_eq!(packet.questions().len(), 0);
+        assert_eq!(packet.answers().len(), 0);
+        assert_eq!(packet.authorities().len(), 0);
+        assert_eq!(packet.additionals().len(), 0);
+
+        let question = Query::new(
+            "example.local".to_string(),
+            DnsType::A,
+            DnsClass::IN,
+        );
+
+        packet.add_question(question.clone());
+        assert_eq!(packet.questions().len(), 1);
+        assert_eq!(packet.questions()[0], question);
+
+        let response = Response::new(
+            "example.local",
+            DnsType::A,
+            DnsClass::IN,
+            120,
+            4,
+            vec![127, 0, 0, 1],
+        );
+
+        packet.add_answer(response.clone());
+        assert_eq!(packet.answers().len(), 1);
+        assert_eq!(packet.answers()[0], response);
+
+        packet.add_authority(response.clone());
+        assert_eq!(packet.authorities().len(), 1);
+        assert_eq!(packet.authorities()[0], response);
+
+        packet.add_additional(response.clone());
+        assert_eq!(packet.additionals().len(), 1);
+        assert_eq!(packet.additionals()[0], response);
+    }
+
+    #[test]
+    fn test_mdns_packet_to_bytes() {
+        let header = MdnsHeader {
+            id: 1234,
+            flags: MdnsFlags::new(),
+            total_questions: 0,
+            total_answers: 0,
+            total_authority_records: 0,
+            total_additional_records: 0,
+        };
+
+        let packet = MdnsPacket::new(header, vec![], vec![], vec![], vec![]);
+        assert_eq!(packet.to_bytes(), vec![
+            0x04, 0xd2, // ID
+            0x00, 0x00, // Flags
+            0x00, 0x00, // QDCOUNT
+            0x00, 0x00, // ANCOUNT
+            0x00, 0x00, // NSCOUNT
+            0x00, 0x00, // ARCOUNT
+        ]);
     }
 }
