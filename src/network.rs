@@ -27,12 +27,7 @@ use std::{
 };
 
 use crate::{
-    DnsClass,
-    DnsType,
-    MdnsPacket,
-    MdnsService,
-    Query,
-    TxtRecords,
+    DnsClass, DnsName, DnsType, MdnsPacket, MdnsService, Query, TxtRecords
 };
 
 // TODO:
@@ -139,12 +134,11 @@ impl MdnsBroadcaster {
                         let mut questions = Vec::new();
                         for service in services.iter() {
                             let query = Query::new(
-                                format!(
-                                    "{}.{}.{}.",
-                                    service.instance_name(),
-                                    service.service_type(),
-                                    service.service_domain(),
-                                ),
+                                DnsName::new(vec![
+                                    service.instance_name().clone(),
+                                    service.service_type().clone(),
+                                    service.service_domain().clone(),
+                                ]),
                                 DnsType::PTR,
                                 DnsClass::IN,
                             );

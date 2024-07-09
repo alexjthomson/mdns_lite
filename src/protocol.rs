@@ -3,6 +3,8 @@
 //! packets, queries, and responses. It interacts with the network module to
 //! receive raw data and convert it into meaningful mDNS packets and vice versa.
 
+use thiserror::Error;
+
 /// Describes the `OPCODE` field in [`MdnsFlags`].
 /// 
 /// This field indicates the kind of query contained within an [`MdnsPacket`].
@@ -551,6 +553,136 @@ impl From<[u8; 2]> for DnsClass {
     }
 }
 
+/// Error type for [`DnsName`].
+#[derive(PartialEq, Eq, Debug, Error)]
+pub enum DnsNameError {
+    #[error("DNS name must end with a `.`.")]
+    MustEndWithDot,
+    #[error("Each label must be 63 characters or less.")]
+    LabelTooLong,
+    #[error("Label length exceeds data length.")]
+    InvalidLabelLength,
+    #[error("Label is not valid UTF-8.")]
+    InvalidUtf8Label,
+    #[error("Name does not end with zero byte.")]
+    InvalidEndOfName,
+}
+
+/// Represents a DNS name with its labels.
+#[derive(Clone, PartialEq, Debug)]
+pub struct DnsName {
+    /// Labels that make up the [`DnsName`].
+    labels: Vec<String>,
+}
+
+impl DnsName {
+    /// Creates a new [`DnsName`].
+    /// 
+    /// ## Note
+    /// Prefer using [`DnsName::from_name`] since this function does not
+    /// validate the `labels` provided to it.
+    #[inline]
+    #[must_use]
+    pub fn new(labels: Vec<String>) -> Self {
+        Self { labels }
+    }
+
+    /// Creates a new [`DnsName`] from a string representation of the name.
+    /// 
+    /// The string representation should be formatted as follows:
+    /// `label_1.label_2.label_3.`, and may contain any number of labels. The
+    /// string must end with a dot and only contain alphanumeric characters,
+    /// hyphens, and underscores.
+    pub fn from_name(name: &str) -> Result<Self, DnsNameError> {
+        if name.is_empty() || !name.ends_with('.') {
+            return Err(DnsNameError::MustEndWithDot);
+        }
+        let labels: Vec<String> = name
+            .trim_end_matches('.')
+            .split('.')
+            .map(|s| s.to_string())
+            .collect();
+
+        for label in &labels {
+            if label.len() > 63 {
+                return Err(DnsNameError::LabelTooLong);
+            }
+        }
+        Ok(DnsName::new(labels))
+    }
+
+    /// Convert the [`DnsName`] to its wire format
+    #[must_use]
+    pub fn to_wire_format(&self) -> Vec<u8> {
+        let mut wire_format = Vec::new();
+        for label in &self.labels {
+            wire_format.push(label.len() as u8);
+            wire_format.extend_from_slice(label.as_bytes());
+        }
+        wire_format.push(0); // End of name
+        wire_format
+    }
+
+    /// Create a [`DnsName`] from wire format
+    pub fn from_wire_format(data: &[u8]) -> Result<Self, DnsNameError> {
+        let mut labels = Vec::new();
+        let mut i = 0;
+        while i < data.len() {
+            let len = data[i] as usize;
+            if len == 0 {
+                break;
+            }
+
+            if i + len + 1 > data.len() {
+                return Err(DnsNameError::InvalidLabelLength);
+            }
+
+            let label = match std::str::from_utf8(&data[i+1..i+1+len]) {
+                Ok(label) => label.to_string(),
+                Err(_) => return Err(DnsNameError::InvalidUtf8Label),
+            };
+            labels.push(label);
+            i += len + 1;
+        }
+        if i == data.len() || data[i] != 0 {
+            return Err(DnsNameError::InvalidEndOfName);
+        }
+        Ok(DnsName { labels })
+    }
+}
+
+impl std::fmt::Display for DnsName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.", self.labels.join("."))
+    }
+}
+
+impl From<Vec<String>> for DnsName {
+    fn from(labels: Vec<String>) -> Self {
+        DnsName::new(labels)
+    }
+}
+
+impl From<DnsName> for Vec<String> {
+    fn from(dns_name: DnsName) -> Self {
+        dns_name.labels
+    }
+}
+
+impl TryFrom<&str> for DnsName {
+    type Error = DnsNameError;
+    fn try_from(name: &str) -> Result<Self, Self::Error> {
+        DnsName::from_name(name)
+    }
+}
+
+impl TryFrom<String> for DnsName {
+    type Error = DnsNameError;
+    fn try_from(name: String) -> Result<Self, Self::Error> {
+        DnsName::from_name(name.as_str())
+    }
+}
+
 /// Represents an mDNS query.
 /// 
 /// mDNS (Multicast DNS) queries are used to discover services and devices on a
@@ -563,7 +695,7 @@ pub struct Query {
     /// resolve. For example, in mDNS, it could be a service type like
     /// `_http._tcp.local`, or a specific instance of a service like
     /// `my_esp32._http._tcp.local`.
-    name: String,
+    name: DnsName,
     /// The type of the query.
     /// 
     /// This field specifies the type of DNS record being requested.
@@ -580,7 +712,7 @@ impl Query {
     #[inline]
     #[must_use]
     pub fn new(
-        name: String,
+        name: DnsName,
         query_type: DnsType,
         query_class: DnsClass
     ) -> Self {
@@ -590,7 +722,7 @@ impl Query {
     /// Returns an immutable reference to the name being queried.
     #[inline]
     #[must_use]
-    pub fn name(&self) -> &String {
+    pub fn name(&self) -> &DnsName {
         &self.name
     }
 
@@ -905,7 +1037,7 @@ impl MdnsPacket {
         let mut packet = self.header.to_bytes();
         fn write_queries(packet: &mut Vec<u8>, queries: &[Query]) {
             for query in queries.iter() {
-                packet.extend_from_slice(query.name.as_bytes());
+                packet.extend_from_slice(&query.name.to_wire_format());
                 packet.push(0); // Null byte to end of string
                 packet.extend_from_slice(&Into::<[u8; 2]>::into(query.query_type));
                 packet.extend_from_slice(&Into::<[u8; 2]>::into(query.query_class));
@@ -1037,11 +1169,11 @@ mod tests {
     #[test]
     fn test_query() {
         let query = Query::new(
-            "example.local".to_string(),
+            DnsName::from_name("example.local.").unwrap(),
             DnsType::A,
             DnsClass::IN,
         );
-        assert_eq!(query.name(), "example.local");
+        assert_eq!(query.name().to_string(), "example.local.");
         assert_eq!(query.query_type(), DnsType::A);
         assert_eq!(query.query_class(), DnsClass::IN);
     }
@@ -1097,7 +1229,7 @@ mod tests {
         assert_eq!(packet.additionals().len(), 0);
 
         let question = Query::new(
-            "example.local".to_string(),
+            DnsName::from_name("example.local").unwrap(),
             DnsType::A,
             DnsClass::IN,
         );
@@ -1147,5 +1279,63 @@ mod tests {
             0x00, 0x00, // NSCOUNT
             0x00, 0x00, // ARCOUNT
         ]);
+    }
+
+    #[test]
+    fn test_create_dns_name_from_str() {
+        let dns_name = DnsName::from_name("example_service._http._tcp.local.").unwrap();
+        assert_eq!(dns_name.labels, vec!["example_service", "_http", "_tcp", "local"]);
+    }
+
+    #[test]
+    fn test_create_dns_name_from_invalid_str() {
+        let err = DnsName::from_name("example_service._http._tcp.local").unwrap_err();
+        assert_eq!(err, DnsNameError::MustEndWithDot);
+    }
+
+    #[test]
+    fn test_create_dns_name_from_str_with_long_label() {
+        let mut label = "a".repeat(64);
+        label.push('.');
+        let err = DnsName::from_name(label.as_str()).unwrap_err();
+        assert_eq!(err, DnsNameError::LabelTooLong);
+    }
+
+    #[test]
+    fn test_to_wire_format() {
+        let dns_name = DnsName::from_name("example_service._http._tcp.local.").unwrap();
+        let wire_format = dns_name.to_wire_format();
+        assert_eq!(wire_format, vec![
+            15, b'e', b'x', b'a', b'm', b'p', b'l', b'e', b'_', b's', b'e', b'r', b'v', b'i', b'c', b'e',
+            5, b'_', b'h', b't', b't', b'p',
+            4, b'_', b't', b'c', b'p',
+            5, b'l', b'o', b'c', b'a', b'l',
+            0
+        ]);
+    }
+
+    #[test]
+    fn test_from_wire_format() {
+        let wire_format = vec![
+            15, b'e', b'x', b'a', b'm', b'p', b'l', b'e', b'_', b's', b'e', b'r', b'v', b'i', b'c', b'e',
+            5, b'_', b'h', b't', b't', b'p',
+            4, b'_', b't', b'c', b'p',
+            5, b'l', b'o', b'c', b'a', b'l',
+            0
+        ];
+        let dns_name = DnsName::from_wire_format(&wire_format).unwrap();
+        assert_eq!(dns_name.labels, vec!["example_service", "_http", "_tcp", "local"]);
+    }
+
+    #[test]
+    fn test_from_invalid_wire_format() {
+        let wire_format = vec![
+            15, b'e', b'x', b'a', b'm', b'p', b'l', b'e', b'_', b's', b'e', b'r', b'v', b'i', b'c', b'e',
+            5, b'_', b'h', b't', b't', b'p',
+            4, b'_', b't', b'c', b'p',
+            5, b'l', b'o', b'c', b'a', b'l',
+        ];
+        let err = DnsName::from_wire_format(&wire_format).unwrap_err();
+        assert_eq!(err, DnsNameError::InvalidEndOfName);
     }
 }

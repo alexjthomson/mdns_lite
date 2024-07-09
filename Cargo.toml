@@ -14,6 +14,7 @@ path = "src/lib.rs"
 # heapless = { version = "0.8", default-features = false }
 log = { version = "0.4" }
 heapless = { version = "0.8" }
+thiserror = { version = "1.0" }
 
 [profile.dev]
 opt-level = 1
@@ -31,3 +32,7 @@ incremental = false
 strip = true
 lto = true
 panic = "abort"
+
+[[example]]
+name = "broadcast"
+path = "examples/broadcast.rs"

@@ -191,10 +191,10 @@ pub struct MdnsService {
     service_type: String,
     /// The domain under which the service is registered.
     /// 
-    /// For mDNS, this is typically `.local`, but custom domains can be used.
-    /// For example: `.internal`.
+    /// For mDNS, this is typically `local`, but custom domains can be used.
+    /// For example: `internal`.
     /// 
-    /// This should contain the `.` character at the start, then be followed by
+    /// This should not include the `.` character and should only contain
     /// lowercase alphabetic characters.
     service_domain: String,
     /// Port number on which the service is running.
@@ -220,7 +220,7 @@ pub struct MdnsService {
 }
 
 impl MdnsService {
-    pub const DEFAULT_DOMAIN: &'static str = ".local";
+    pub const DEFAULT_DOMAIN: &'static str = "local";
 
     /// Creates a new [`MdnsService`].
     #[inline(always)]
