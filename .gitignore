@@ -1,5 +1,2 @@
-!.cargo/
-.embuild/
 target/
-
 Cargo.lock

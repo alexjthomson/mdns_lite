@@ -285,10 +285,20 @@ impl MdnsService {
         &mut self.txt_records
     }
 
+    /// Returns the total number of TXT records in this [`MdnsService`].
+    #[inline]
+    #[must_use]
+    pub fn total_records(&self) -> usize {
+        self.txt_records.len()
+    }
+
     /// Adds a TXT record to the [`MdnsService`].
     /// 
     /// For more information, see [`MdnsTxtRecords::add`].
-    // TODO: Complete documentation for this function.
+    /// 
+    /// ## Returns
+    /// This function returns [`Ok`] with the previous value associated with the
+    /// key (if it existed), or [`Err`] if there was an error adding the record.
     #[inline]
     pub fn add_record(
         &mut self,
@@ -301,7 +311,9 @@ impl MdnsService {
     /// Removes a TXT record from the [`MdnsService`].
     /// 
     /// For more information, see [`MdnsTxtRecords::remove`].
-    // TODO: Complete documentation for this function.
+    /// 
+    /// ## Returns
+    /// This function returns the value of the record (if it existed).
     #[inline]
     pub fn remove_record(
         &mut self,
@@ -313,7 +325,9 @@ impl MdnsService {
     /// Returns the TXT record for the given `key`.
     /// 
     /// For more information, see [`MdnsTxtRecords::get`].
-    // TODO: Complete documentation for this function.
+    /// 
+    /// ## Returns
+    /// This function returns a reference to the record (if it exists.)
     #[inline]
     #[must_use]
     pub fn get_record(
@@ -382,10 +396,10 @@ mod tests {
     fn test_remove_txt_records() {
         // Create records:
         let mut records = TxtRecords::new();
-        records.add("record_0", "value_0").unwrap();
         records.add("record_1", "value_1").unwrap();
         records.add("record_2", "value_2").unwrap();
         records.add("record_3", "value_3").unwrap();
+        records.add("record_4", "value_4").unwrap();
         assert_eq!(records.len(), 4);
 
         // Remove record:
@@ -430,5 +444,88 @@ mod tests {
         );
     }
 
-    // TODO: Add unit tests for other types here
+    /// Creates a test [`MdnsService`].
+    fn create_test_mdns_service() -> MdnsService {
+        MdnsService::new(
+            "bedroom_lightbulb",
+            "_http._tcp",
+            ".local",
+            80,
+            TxtRecords::new(),
+        )
+    }
+
+    #[test]
+    fn test_new_mdns_service() {
+        let mut service = create_test_mdns_service();
+        assert_eq!(service.instance_name(), "bedroom_lightbulb");
+        assert_eq!(service.service_type(), "_http._tcp");
+        assert_eq!(service.service_domain(), ".local");
+        assert_eq!(service.port(), 80);
+        assert_eq!(service.total_records(), 0);
+        assert_eq!(service.records().len(), 0);
+        assert_eq!(service.records_mut().len(), 0);
+    }
+
+    #[test]
+    fn test_add_record() {
+        let mut service = create_test_mdns_service();
+        assert_eq!(service.total_records(), 0);
+        assert_eq!(service.add_record("version", "1.0"), Ok(None));
+        assert_eq!(service.total_records(), 1);
+        assert_eq!(service.add_record("version", "1.1"), Ok(Some("1.0".to_owned())));
+        assert_eq!(service.total_records(), 1);
+        assert_eq!(service.add_record("entry_2", "2"), Ok(None));
+        assert_eq!(service.total_records(), 2);
+        assert_eq!(service.add_record("entry_3", "3"), Ok(None));
+        assert_eq!(service.total_records(), 3);
+        assert_eq!(service.add_record("entry_4", "4"), Ok(None));
+        assert_eq!(service.total_records(), 4);
+        assert_eq!(service.add_record("entry_5", "5"), Ok(None));
+        assert_eq!(service.total_records(), 5);
+    }
+
+    #[test]
+    fn test_remove_record() {
+        // Create service:
+        let mut service = create_test_mdns_service();
+        service.add_record("record_1", "1").unwrap();
+        service.add_record("record_2", "2").unwrap();
+        service.add_record("record_3", "3").unwrap();
+        service.add_record("record_4", "4").unwrap();
+        assert_eq!(service.total_records(), 4);
+
+        // Start removing records:
+        assert_eq!(service.remove_record("does_not_exist"), None);
+        assert_eq!(service.total_records(), 4);
+
+        assert_eq!(service.remove_record("record_1"), Some("1".to_owned()));
+        assert_eq!(service.total_records(), 3);
+        assert_eq!(service.remove_record("record_4"), Some("4".to_owned()));
+        assert_eq!(service.total_records(), 2);
+        assert_eq!(service.remove_record("record_3"), Some("3".to_owned()));
+        assert_eq!(service.total_records(), 1);
+        assert_eq!(service.remove_record("record_3"), None);
+        assert_eq!(service.total_records(), 1);
+        assert_eq!(service.remove_record("record_2"), Some("2".to_owned()));
+        assert_eq!(service.total_records(), 0);
+    }
+
+    #[test]
+    fn test_get_record() {
+        // Create services:
+        let mut service = create_test_mdns_service();
+        service.add_record("record_1", "1").unwrap();
+        service.add_record("record_2", "2").unwrap();
+        service.add_record("record_3", "3").unwrap();
+        service.add_record("record_4", "4").unwrap();
+        assert_eq!(service.total_records(), 4);
+
+        // Get services:
+        assert_eq!(service.get_record("record_1"), Some(&"1".to_owned()));
+        assert_eq!(service.get_record("record_0"), None);
+        assert_eq!(service.get_record("record_2"), Some(&"2".to_owned()));
+        assert_eq!(service.get_record("record_3"), Some(&"3".to_owned()));
+        assert_eq!(service.get_record("record_4"), Some(&"4".to_owned()));
+    }
 }

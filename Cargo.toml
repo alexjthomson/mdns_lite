@@ -1,27 +1,19 @@
 [package]
-name = "esp_mdns"
-description = "An lightweight mDNS implementation in Rust for ESP devices."
+name = "mdns_lite"
+description = "An lightweight mDNS implementation."
 version = "0.1.0"
 edition = "2021"
 authors = ["Alex Thomson <alexjthomson1882@gmail.com>"]
 
 [lib]
-name = "esp_mdns"
+name = "mdns_lite"
 path = "src/lib.rs"
 
 [dependencies]
-log = { version = "0.4", default-features = false }
-heapless = { version = "0.8", default-features = false }
-#esp-idf-sys = { version = "0.35", default-features = false }
-#esp-idf-hal = { version = "0.44", default-features = false }
-#smoltcp = { version = "0.11", default-features = false }
-
-[build-dependencies]
-cmake = "0.1"
-
-[dev-dependencies]
-assert_cmd = "2.0"
-tempfile = "3.1"
+# log = { version = "0.4", default-features = false }
+# heapless = { version = "0.8", default-features = false }
+log = { version = "0.4" }
+heapless = { version = "0.8" }
 
 [profile.dev]
 opt-level = 1
