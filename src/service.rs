@@ -681,6 +681,10 @@ mod tests {
     fn test_validate_service_type() {
         // Valid service types
         assert_eq!(
+            MdnsService::validate_service_type("_udp"),
+            Ok(vec!["_udp".to_owned()])
+        );
+        assert_eq!(
             MdnsService::validate_service_type("_http._tcp"),
             Ok(vec!["_http".to_owned(), "_tcp".to_owned()])
         );
