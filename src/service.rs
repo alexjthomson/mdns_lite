@@ -13,10 +13,14 @@ pub enum MdnsServiceError {
     /// [`MdnsTxtRecords`] instance.
     #[error("TXT records are full.")]
     TxtRecordsFull,
+    #[error("Missing instance name labels.
+    There must be at least one instance name label provided.")]
+    MissingInstanceNameLabels,
     #[error("Invalid instance name: `{0}`.")]
     InvalidInstanceName(String),
-    #[error("Invalid service type label count (found: `{0}`, expected `2`).")]
-    InvalidServiceTypeCount(usize),
+    #[error("Missing service type labels.
+    There must be at least one service type label provided.")]
+    MissingServiceTypeLabels,
     #[error("Invalid service type name label: `{0}`.
     Service type names must start with a `_` character, followed by only alpha-numeric characters and hyphens.")]
     InvalidServiceTypeName(String),
@@ -165,56 +169,63 @@ impl TxtRecords {
 
 /// A service that can be advertised via mDNS.
 pub struct MdnsService {
-    /// Contains each of the labels for the [`MdnsService`].
+    /// Labels that belong to the instance name.
     /// 
-    /// An mDNS service can have at most 4 labels:
+    /// This field collectively describes the instance name of the mDNS service,
+    /// which should be a unique identifier for the specific instance of the
+    /// service on the network. The instance name helps distinguish between
+    /// multiple instances of the same service type.
     /// 
-    /// # 1. Instance Name
-    /// This field stores the instance name of the mDNS service, which is a
-    /// unique identifier for the specific instance of the service on the
-    /// network. The instance name helps distinguish between multiple instances
-    /// of the same service type.
-    /// 
-    /// ## Formatting
-    /// The `instance_name` should be a human-readable string that uniquely
-    /// identifies the service instance within the local network. It should be
-    /// descriptive enough to allow users to differentiate it from other
-    /// services of the same type.
+    /// Each label in the instance name should uniquely identify the service
+    /// instance within the local network. It should be descriptive enough to
+    /// allow users to differentiate it from other services of the same type.
     /// 
     /// ## Examples
     /// - `lightbulb_a3fb01`
-    /// - `printer1`
-    /// - `living_room_camera`
+    /// - `printer_1`
+    /// - `security_camera`
     /// 
     /// ## Notes
     /// - It is good practice to keep the name concise, yet descriptive.
     /// - The name should be unique within the scope of the service type on the
     ///   local network to avoid conflicts.
+    /// - Typically the instance name only consists of one label; however, it is
+    ///   within the specifications of mDNS to support multiple. More than one
+    ///   label is not typically seen in practice.
+    instance_name_labels: Vec<String>,
+    /// Labels that describe the service type.
     /// 
-    /// # 2. Service Type Name
-    /// This is part of the service type. This label should start with an
-    /// underscore and should only contain ascii alphanumeric characters and
-    /// hyphens.
+    /// The service type describes the type of service being offered and the
+    /// protocol over which the service is available. This helps clients
+    /// discover the services available on the network and understand how to
+    /// interact with them.
     /// 
-    /// ## Examples
-    /// - `_http`
-    /// - `_printer`
+    /// A typical service type contains two main components:
+    /// 1. **Service Name**: Specifies the type of service (e.g. `_http`,
+    ///    `_printer`).
+    /// 2. **Protocol**: Specifies the protocol used by the service, which can
+    ///    be either `_tcp` or `_udp`.
     /// 
-    /// # 3. Service Type Protocol
-    /// This is part of the service type. This label should contain the protocol
-    /// used by the service. There are only two values that this can be:
-    /// - `_tcp`
-    /// - `_udp`
+    /// At the very minimum, the service type should contain the protocol used.
+    /// Additionally, the protocol should always be the last label specified.
     /// 
-    /// # 4. Service Domain
+    /// More than two labels is supported by the mDNS specifications, but this
+    /// is rarely seen in practice. Typically either two or one label is
+    /// included.
+    /// 
+    /// All labels specified within the service type labels should start with an
+    /// underscore, and should then only contain ascii alphanumeric characters
+    /// and hyphens.
+    service_type_labels: Vec<String>,
     /// The domain under which the service is registered.
     /// 
-    /// For mDNS, this is typically `local`, but custom domains can be used.
-    /// For example: `internal`.
+    /// For mDNS, this is typically `local`, but custom domains are supported by
+    /// the mDNS specifications. For example, you could use `internal` instead
+    /// of `local`.
     /// 
-    /// This should not include the `.` character and should only contain
-    /// lowercase alphabetic characters.
-    labels: heapless::Vec<String, 4>,
+    /// This should not include the leading `.` character, and should only
+    /// contain lowercase alphabetic characters.
+    service_domain: String,
     /// Port number on which the service is running.
     /// 
     /// This field specifies the port number where the service can be accessed.
@@ -245,53 +256,64 @@ impl MdnsService {
     /// [`Ok`].
     pub fn validate_instance_name(
         instance_name: &str
-    ) -> Result<String, MdnsServiceError> {
-        if instance_name.chars().any(|c| c == '.' || c == '%' || c.is_control()) {
-            Err(MdnsServiceError::InvalidInstanceName(instance_name.to_owned()))
-        } else {
-            Ok(String::from(instance_name))
+    ) -> Result<Vec<String>, MdnsServiceError> {
+        let labels: Vec<String> = instance_name
+            .split('.')
+            .map(|s| s.to_owned())
+            .collect();
+        if labels.is_empty() {
+            return Err(MdnsServiceError::MissingInstanceNameLabels)
         }
+
+        // Validate each label:
+        for label in labels.iter() {
+            if label.chars().any(|c| c == '.' || c == '%' || c.is_control()) {
+                return Err(MdnsServiceError::InvalidInstanceName(label.clone()));
+            }
+        }
+
+        Ok(labels)
     }
 
     /// Returns [`Err`] if the `service_type` is invalid; otherwise, returns
     /// [`Ok`].
     pub fn validate_service_type(
         service_type: &str,
-    ) -> Result<(String, String), MdnsServiceError> {
-        // Split the labels into a vector of Strings:
+    ) -> Result<Vec<String>, MdnsServiceError> {
         let labels: Vec<String> = service_type
             .split('.')
             .map(|s| s.to_owned())
             .collect();
-
-        // Validate that there are exactly two labels. These two labels are the
-        // `service_name` and the `protocol`:
-        if labels.len() != 2 {
-            return Err(MdnsServiceError::InvalidServiceTypeCount(labels.len()));
+        if labels.is_empty() {
+            return Err(MdnsServiceError::MissingServiceTypeLabels);
         }
 
-        // Validate the service name:
-        let service_name = unsafe {
-            // SAFETY: We checked the length of `labels` above, we know there
-            // are exactly two elements:
-            labels.get_unchecked(0)
-        };
-        if !service_name.starts_with('_')
-            || service_name.chars().skip(1).any(|c| !c.is_ascii_alphanumeric() && c != '-')
-        {
-            return Err(MdnsServiceError::InvalidServiceTypeName(service_name.clone()));
+        // Validate non-protocol labels:
+        let non_protocol_labels = labels.len() - 1;
+        if non_protocol_labels > 0 {
+            for i in 0..non_protocol_labels {
+                let label = unsafe {
+                    // SAFETY: We know this is in range since
+                    // `non_protocol_labels` is guaranteed to be in range:
+                    labels.get_unchecked(i)
+                };
+                if !label.starts_with('_') || label.chars().skip(1).any(|c| !c.is_ascii_alphanumeric() && c != '-') {
+                    return Err(MdnsServiceError::InvalidServiceTypeName(label.clone()));
+                }
+            }
         }
 
+        // Validate protocol label:
         let service_protocol = unsafe {
-            // SAFETY: We checked the length of `labels` above, we know there
-            // are exactly two elements:
-            labels.get_unchecked(1)
+            // SAFETY: `non_protocol_labels` points towards the last element in
+            // the labels vector, therefore it must be in range:
+            labels.get_unchecked(non_protocol_labels)
         };
         if service_protocol != "_tcp" && service_protocol != "_udp" {
             return Err(MdnsServiceError::InvalidServiceTypeProtocol(service_protocol.clone()));
         }
 
-        Ok((service_name.clone(), service_protocol.clone()))
+        Ok(labels)
     }
 
     /// Returns [`Err`] if the `service_domain` is invalid; otherwise, returns
@@ -314,70 +336,40 @@ impl MdnsService {
         port: u16,
         txt_records: TxtRecords,
     ) -> Result<Self, MdnsServiceError> {
-        // Validate the fields:
-        let instance_name = Self::validate_instance_name(instance_name)?;
-        let service_type = Self::validate_service_type(service_type)?;
+        let instance_name_labels = Self::validate_instance_name(instance_name)?;
+        let service_type_labels = Self::validate_service_type(service_type)?;
         let service_domain = Self::validate_service_domain(service_domain)?;
-
-        // Construct the labels:
-        let mut labels = heapless::Vec::<String, 4>::new();
-        unsafe {
-            // SAFETY: We are pushing exactly four elements to the vec, we know
-            // that the vec has a length of exactly four:
-            labels.push_unchecked(instance_name);
-            labels.push_unchecked(service_type.0);
-            labels.push_unchecked(service_type.1);
-            labels.push_unchecked(service_domain);
-        }
-
-        // Construct the service:
-        Ok(Self { labels, port, txt_records })
+        Ok(Self { instance_name_labels, service_type_labels, service_domain, port, txt_records })
     }
 
     /// Returns the labels in order for the [`MdnsService`].
+    /// 
+    /// ## Notes
+    /// This builds the returned [`Vec<String>`] every time the function is
+    /// called. Avoid calling this frequently or cache the result.
     #[inline]
     #[must_use]
-    pub fn labels(&self) -> &heapless::Vec<String, 4> {
-        &self.labels
+    pub fn labels(&self) -> Vec<String> {
+        let capacity: usize = self.instance_name_labels.len() + self.service_type_labels.len() + 1;
+        let mut labels: Vec<String> = Vec::with_capacity(capacity);
+        labels.extend(self.instance_name_labels.iter().cloned());
+        labels.extend(self.service_type_labels.iter().cloned());
+        labels.push(self.service_domain.clone());
+        labels
     }
 
     /// Returns the name of the [`MdnsService`].
     #[inline]
     #[must_use]
-    pub fn instance_name(&self) -> &String {
-        debug_assert_eq!(self.labels.len(), 4);
-        unsafe {
-            // SAFETY: `labels` has exactly four elements:
-            self.labels.get_unchecked(0)
-        }
+    pub fn instance_name_labels(&self) -> &Vec<String> {
+        &self.instance_name_labels
     }
 
     /// Returns the type of the [`MdnsService`].
     #[inline]
     #[must_use]
-    pub fn service_type(&self) -> String {
-        debug_assert_eq!(self.labels.len(), 4);
-        unsafe {
-            // SAFETY: `labels` has exactly four elements:
-            format!(
-                "{0}.{1}",
-                self.labels.get_unchecked(1),
-                self.labels.get_unchecked(2),
-            )
-        }
-    }
-
-    /// Returns an immutable reference to the service type name.
-    /// 
-    /// This is typically something like `_http` or `_printer`.
-    #[inline]
-    #[must_use]
-    pub fn service_type_name(&self) -> &String {
-        debug_assert_eq!(self.labels.len(), 4);
-        unsafe {
-            // SAFETY: `labels` has exactly four elements:
-            self.labels.get_unchecked(1)
-        }
+    pub fn service_type_labels(&self) -> &Vec<String> {
+        &self.service_type_labels
     }
 
     /// Returns an immutable reference to the service type protocol.
@@ -386,22 +378,14 @@ impl MdnsService {
     #[inline]
     #[must_use]
     pub fn service_type_protocol(&self) -> &String {
-        debug_assert_eq!(self.labels.len(), 4);
-        unsafe {
-            // SAFETY: `labels` has exactly four elements:
-            self.labels.get_unchecked(2)
-        }
+        self.service_type_labels.last().unwrap()
     }
 
     /// Returns the domain of the [`MdnsService`].
     #[inline]
     #[must_use]
     pub fn service_domain(&self) -> &String {
-        debug_assert_eq!(self.labels.len(), 4);
-        unsafe {
-            // SAFETY: `labels` has exactly four elements:
-            self.labels.get_unchecked(3)
-        }
+        &self.service_domain
     }
 
     /// Returns the port that the [`MdnsService`] exists at.
@@ -600,9 +584,8 @@ mod tests {
     #[test]
     fn test_new_mdns_service() {
         let mut service = create_test_mdns_service();
-        assert_eq!(service.instance_name(), "bedroom_lightbulb");
-        assert_eq!(service.service_type(), "_http._tcp");
-        assert_eq!(service.service_type_name(), &"_http".to_owned());
+        assert_eq!(service.instance_name_labels().first().unwrap(), "bedroom_lightbulb");
+        assert_eq!(service.service_type_labels(), &vec!["_http", "_tcp"]);
         assert_eq!(service.service_type_protocol(), &"_tcp".to_owned());
         assert_eq!(service.service_domain(), "local");
         assert_eq!(service.port(), 80);
@@ -676,11 +659,20 @@ mod tests {
     #[test]
     fn test_validate_instance_name() {
         // Valid instance names
-        assert_eq!(MdnsService::validate_instance_name("ValidName"), Ok("ValidName".to_string()));
-        assert_eq!(MdnsService::validate_instance_name("Another_Valid-Name"), Ok("Another_Valid-Name".to_string()));
+        assert_eq!(
+            MdnsService::validate_instance_name("ValidName"),
+            Ok(vec!["ValidName".to_owned()])
+        );
+        assert_eq!(
+            MdnsService::validate_instance_name("Another_Valid-Name"),
+            Ok(vec!["Another_Valid-Name".to_owned()])
+        );
+        assert_eq!(
+            MdnsService::validate_instance_name("One.Two.Three"),
+            Ok(vec!["One".to_owned(), "Two".to_owned(), "Three".to_owned()])
+        );
         
         // Invalid instance names
-        assert!(MdnsService::validate_instance_name("Invalid.Name").is_err());
         assert!(MdnsService::validate_instance_name("Invalid%Name").is_err());
         assert!(MdnsService::validate_instance_name("Invalid\u{0000}Name").is_err());
     }
@@ -690,11 +682,11 @@ mod tests {
         // Valid service types
         assert_eq!(
             MdnsService::validate_service_type("_http._tcp"),
-            Ok(("_http".to_owned(), "_tcp".to_owned()))
+            Ok(vec!["_http".to_owned(), "_tcp".to_owned()])
         );
         assert_eq!(
             MdnsService::validate_service_type("_ftp._udp"),
-            Ok(("_ftp".to_owned(), "_udp".to_owned()))
+            Ok(vec!["_ftp".to_owned(), "_udp".to_owned()])
         );
 
         // Invalid service types
