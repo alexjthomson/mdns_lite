@@ -1038,7 +1038,6 @@ impl MdnsPacket {
         fn write_queries(packet: &mut Vec<u8>, queries: &[Query]) {
             for query in queries.iter() {
                 packet.extend_from_slice(&query.name.to_wire_format());
-                packet.push(0); // Null byte to end of string
                 packet.extend_from_slice(&Into::<[u8; 2]>::into(query.query_type));
                 packet.extend_from_slice(&Into::<[u8; 2]>::into(query.query_class));
             }
@@ -1046,7 +1045,6 @@ impl MdnsPacket {
         fn write_responses(packet: &mut Vec<u8>, responses: &[Response]) {
             for response in responses.iter() {
                 packet.extend_from_slice(response.name.as_bytes());
-                packet.push(0); // Null byte to end of string
                 packet.extend_from_slice(&Into::<[u8; 2]>::into(response.response_type));
                 packet.extend_from_slice(&Into::<[u8; 2]>::into(response.response_class));
                 packet.extend_from_slice(&response.ttl.to_be_bytes());

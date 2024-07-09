@@ -4,7 +4,7 @@ use mdns_lite::MdnsBroadcaster;
 
 fn main() {
     // Create broadcaster and example service:
-    let mut broadcaster = MdnsBroadcaster::new();
+    let mut broadcaster = MdnsBroadcaster::default();
     broadcaster.register_service(
         "example_service",
         "_tcp",

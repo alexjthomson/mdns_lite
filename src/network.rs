@@ -47,18 +47,27 @@ impl Default for MdnsBroadcaster {
     #[inline]
     #[must_use]
     fn default() -> Self {
-        Self::new()
+        Self::new(
+            Vec::new(),
+            Self::DEFAULT_BROADCAST_INTERVAL
+        )
     }
 }
 
 impl MdnsBroadcaster {
+    /// Default value for [`Self::broadcast_interval`].
+    pub const DEFAULT_BROADCAST_INTERVAL: u64 = 60 * 1000;
+
     /// Creates a new empty [`MdnsBroadcaster`].
     #[inline]
     #[must_use]
-    pub fn new() -> Self {
+    pub fn new(
+        services: Vec<MdnsService>,
+        broadcast_interval: u64,
+    ) -> Self {
         Self {
-            services: Arc::new(Mutex::new(Vec::new())),
-            broadcast_interval: 1000,
+            services: Arc::new(Mutex::new(services)),
+            broadcast_interval,
             handle: None,
             stop_flag: Arc::new(AtomicBool::new(false)),
         }
