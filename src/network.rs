@@ -27,7 +27,7 @@ use std::{
 };
 
 use crate::{
-    DnsClass, DnsName, DnsType, MdnsPacket, MdnsService, Query, TxtRecords
+    DnsClass, DnsName, DnsType, MdnsPacket, MdnsService, MdnsServiceError, Query, TxtRecords
 };
 
 // TODO:
@@ -80,13 +80,13 @@ impl MdnsBroadcaster {
         instance_name: &str,
         service_type: &str,
         service_port: u16,
-    ) {
+    ) -> Result<(), MdnsServiceError> {
         self.register_service_with_domain(
             instance_name,
             service_type,
             service_port,
             MdnsService::DEFAULT_DOMAIN,
-        );
+        )
     }
 
     /// Registers a new mDNS service with a custom domain.
@@ -96,15 +96,16 @@ impl MdnsBroadcaster {
         service_type: &str,
         service_port: u16,
         service_domain: &str,
-    ) {
+    ) -> Result<(), MdnsServiceError> {
         let service = MdnsService::new(
             instance_name,
             service_type,
             service_domain,
             service_port,
             TxtRecords::new(),
-        );
+        )?;
         self.register_service_instance(service);
+        Ok(())
     }
 
     /// Registers a new mDNS service instance.
@@ -142,17 +143,12 @@ impl MdnsBroadcaster {
                     if total_services > 0 {
                         let mut questions = Vec::new();
                         for service in services.iter() {
-                            let mut labels = Vec::new();
-                            labels.push(service.instance_name().clone());
-                            labels.extend(service.service_type().split('.').map(|s| s.to_string()));
-                            labels.push(service.service_domain().clone());
-
                             let query = Query::new(
-                                DnsName::new(labels),
+                                DnsName::new(service.labels().to_vec()),
                                 DnsType::PTR,
                                 DnsClass::IN,
                             );
-                            
+
                             questions.push(query);
                         }
                         let packet = MdnsPacket::new_query(

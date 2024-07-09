@@ -590,9 +590,9 @@ impl DnsName {
     /// Creates a new [`DnsName`] from a string representation of the name.
     /// 
     /// The string representation should be formatted as follows:
-    /// `label_1.label_2.label_3.`, and may contain any number of labels. The
-    /// string must end with a dot and only contain alphanumeric characters,
-    /// hyphens, and underscores.
+    /// `instance_name._service_type_name._service_type_protocol.service_domain.`,
+    /// and may contain any number of labels. The string must end with a dot and
+    /// only contain alphanumeric characters, hyphens, and underscores.
     pub fn from_name(name: &str) -> Result<Self, DnsNameError> {
         if name.is_empty() || !name.ends_with('.') {
             return Err(DnsNameError::MustEndWithDot);
@@ -745,7 +745,7 @@ impl Query {
 #[derive(Clone, PartialEq, Debug)]
 pub struct Response {
     /// The name associated with this response.
-    name: String,
+    name: DnsName,
     /// The type of the response.
     response_type: DnsType,
     /// The class of the response, typically IN (Internet).
@@ -763,7 +763,7 @@ impl Response {
     #[inline]
     #[must_use]
     pub fn new(
-        name: &str,
+        name: DnsName,
         response_type: DnsType,
         response_class: DnsClass,
         ttl: u32,
@@ -771,7 +771,7 @@ impl Response {
         data: Vec<u8>,
     ) -> Self {
         Self {
-            name: name.to_owned(),
+            name,
             response_type,
             response_class,
             ttl,
@@ -783,7 +783,7 @@ impl Response {
     /// Returns the name associated with this response.
     #[inline]
     #[must_use]
-    pub fn name(&self) -> &String {
+    pub fn name(&self) -> &DnsName {
         &self.name
     }
 
@@ -1044,7 +1044,7 @@ impl MdnsPacket {
         }
         fn write_responses(packet: &mut Vec<u8>, responses: &[Response]) {
             for response in responses.iter() {
-                packet.extend_from_slice(response.name.as_bytes());
+                packet.extend_from_slice(&response.name.to_wire_format());
                 packet.extend_from_slice(&Into::<[u8; 2]>::into(response.response_type));
                 packet.extend_from_slice(&Into::<[u8; 2]>::into(response.response_class));
                 packet.extend_from_slice(&response.ttl.to_be_bytes());
@@ -1167,11 +1167,11 @@ mod tests {
     #[test]
     fn test_query() {
         let query = Query::new(
-            DnsName::from_name("example.local.").unwrap(),
+            DnsName::from_name("my_sensor._http._tcp.local.").unwrap(),
             DnsType::A,
             DnsClass::IN,
         );
-        assert_eq!(query.name().to_string(), "example.local.");
+        assert_eq!(query.name().to_string(), "my_sensor._http._tcp.local.");
         assert_eq!(query.query_type(), DnsType::A);
         assert_eq!(query.query_class(), DnsClass::IN);
     }
@@ -1179,7 +1179,7 @@ mod tests {
     #[test]
     fn test_response() {
         let mut response = Response::new(
-            "example.local",
+            DnsName::from_name("my_sensor._http._tcp.local.").unwrap(),
             DnsType::A,
             DnsClass::IN,
             120,
@@ -1187,7 +1187,7 @@ mod tests {
             vec![127, 0, 0, 1],
         );
 
-        assert_eq!(response.name(), "example.local");
+        assert_eq!(response.name().to_string(), "my_sensor._http._tcp.local.");
         assert_eq!(response.response_type(), &DnsType::A);
         assert_eq!(response.response_class(), &DnsClass::IN);
         assert_eq!(response.ttl(), 120);
@@ -1227,7 +1227,7 @@ mod tests {
         assert_eq!(packet.additionals().len(), 0);
 
         let question = Query::new(
-            DnsName::from_name("example.local").unwrap(),
+            DnsName::from_name("my_sensor._http._tcp.local.").unwrap(),
             DnsType::A,
             DnsClass::IN,
         );
@@ -1237,7 +1237,7 @@ mod tests {
         assert_eq!(packet.questions()[0], question);
 
         let response = Response::new(
-            "example.local",
+            DnsName::from_name("my_sensor._http._tcp.local.").unwrap(),
             DnsType::A,
             DnsClass::IN,
             120,

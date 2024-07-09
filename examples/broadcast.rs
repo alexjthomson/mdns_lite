@@ -8,8 +8,8 @@ fn main() {
     broadcaster.register_service(
         "example_service",
         "_http._tcp",
-        80, 
-    );
+        80,
+    ).unwrap();
 
     // Start broadcaster:
     broadcaster.start();
