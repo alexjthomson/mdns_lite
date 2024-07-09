@@ -6,10 +6,7 @@
 
 use std::{
     net::{
-        IpAddr,
-        Ipv4Addr,
-        SocketAddr,
-        UdpSocket,
+        IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket
     },
     sync::{
         atomic::{
@@ -137,8 +134,12 @@ impl MdnsBroadcaster {
         let interval = Duration::from_millis(self.broadcast_interval);
         let handle = thread::spawn(move || {
             // TODO: This also needs to listen for mDNS questions.
-            let multicast_address = SocketAddr::new(
+            let multicast_ipv4_address = SocketAddr::new(
                 IpAddr::V4(Ipv4Addr::new(224, 0, 0, 251)),
+                5353,
+            );
+            let multicast_ipv6_address = SocketAddr::new(
+                IpAddr::V6(Ipv6Addr::new(0xff02, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x00fb)),
                 5353,
             );
             let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
@@ -163,7 +164,8 @@ impl MdnsBroadcaster {
                             questions,
                         );
                         let packet = packet.to_bytes();
-                        socket.send_to(&packet, multicast_address).unwrap();
+                        socket.send_to(&packet, multicast_ipv4_address).unwrap();
+                        socket.send_to(&packet, multicast_ipv6_address).unwrap();
                     }
                 }
                 if stop_flag.load(Ordering::Relaxed) {
