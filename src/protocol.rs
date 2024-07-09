@@ -933,26 +933,6 @@ impl MdnsPacket {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_opcode() {
-        assert_eq!(Opcode::Query, Opcode::Query);
-        assert_eq!(Opcode::IQuery, Opcode::IQuery);
-        assert_eq!(Opcode::Status, Opcode::Status);
-        assert_eq!(Opcode::Unknown(9), Opcode::Unknown(9));
-    }
-
-    #[test]
-    fn test_rcode() {
-        assert_eq!(Rcode::NoError, Rcode::NoError);
-        assert_eq!(Rcode::FormatError, Rcode::FormatError);
-        assert_eq!(Rcode::ServerFailure, Rcode::ServerFailure);
-        assert_eq!(Rcode::NameError, Rcode::NameError);
-        assert_eq!(Rcode::NotImplemented, Rcode::NotImplemented);
-        assert_eq!(Rcode::Refused, Rcode::Refused);
-        assert_eq!(Rcode::Unknown(7), Rcode::Unknown(7));
-    }
-
     #[test]
     fn test_mdns_flags() {
         let mut flags = MdnsFlags::new();
@@ -1013,7 +993,6 @@ mod tests {
     fn test_mdns_flags_from_u16() {
         let flags = MdnsFlags::from(0x8000);
         assert!(flags.qr());
-
         let flags: u16 = flags.into();
         assert_eq!(flags, 0x8000);
     }
@@ -1028,7 +1007,6 @@ mod tests {
             total_authority_records: 3,
             total_additional_records: 4,
         };
-
         let bytes = header.to_bytes();
         assert_eq!(bytes, vec![
             0x04, 0xd2, // ID
@@ -1063,7 +1041,6 @@ mod tests {
             DnsType::A,
             DnsClass::IN,
         );
-
         assert_eq!(query.name(), "example.local");
         assert_eq!(query.query_type(), DnsType::A);
         assert_eq!(query.query_class(), DnsClass::IN);
@@ -1161,7 +1138,6 @@ mod tests {
             total_authority_records: 0,
             total_additional_records: 0,
         };
-
         let packet = MdnsPacket::new(header, vec![], vec![], vec![], vec![]);
         assert_eq!(packet.to_bytes(), vec![
             0x04, 0xd2, // ID
