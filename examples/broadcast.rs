@@ -1,4 +1,7 @@
-use std::{thread::sleep, time::Duration};
+use std::{
+    thread::sleep,
+    time::Duration,
+};
 
 use mdns_lite::MdnsBroadcaster;
 

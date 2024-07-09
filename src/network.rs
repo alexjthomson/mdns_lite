@@ -27,7 +27,14 @@ use std::{
 };
 
 use crate::{
-    DnsClass, DnsName, DnsType, MdnsPacket, MdnsService, MdnsServiceError, Query, TxtRecords
+    DnsClass,
+    DnsName,
+    DnsType,
+    MdnsPacket,
+    MdnsService,
+    MdnsServiceError,
+    Query,
+    TxtRecords,
 };
 
 // TODO:
