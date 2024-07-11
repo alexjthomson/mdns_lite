@@ -10,11 +10,11 @@ name = "mdns_lite"
 path = "src/lib.rs"
 
 [dependencies]
-# log = { version = "0.4", default-features = false }
-# heapless = { version = "0.8", default-features = false }
-log = { version = "0.4" }
-heapless = { version = "0.8" }
-thiserror = { version = "1.0" }
+log = { version = "0.4", default-features = false }
+heapless = { version = "0.8", default-features = false }
+thiserror = { version = "1.0", default-features = false }
+get_if_addrs = { version = "0.5", default-features = false }
+mio = { version = "1.0", default-features = false, features = ["net", "os-poll"]}
 
 [profile.dev]
 opt-level = 1

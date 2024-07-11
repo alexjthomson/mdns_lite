@@ -135,6 +135,11 @@ impl MdnsFlags {
     }
 
     /// Sets the QR (Query/Response) bit.
+    /// 
+    /// - If this is set to `true`, it indicates that the [`MdnsPacket`] is a
+    ///   response.
+    /// - If this is set to `false`, it indicates that the [`MdnsPacket`] is a
+    ///   query.
     #[inline]
     pub fn set_qr(&mut self, value: bool) {
         if value {
@@ -176,6 +181,11 @@ impl MdnsFlags {
     }
 
     /// Sets the AA (Authoritative Answer) bit.
+    /// 
+    /// - If this is set to `true`, it indicates that the responding name server
+    ///   is an authority for the domain name in the question section.
+    /// - If this is set to `false`, it indicates that the responding name
+    ///   server isn't an authority for the domain name in the question section.
     #[inline]
     pub fn set_aa(&mut self, value: bool) {
         if value {
@@ -752,13 +762,14 @@ pub struct Response {
     response_class: DnsClass,
     /// The time to live for this response.
     ttl: u32,
-    /// The data length of this response.
-    data_length: u16,
     /// The actual data of the response.
     data: Vec<u8>,
 }
 
 impl Response {
+    /// Maximum length of [`Self::data`].
+    pub const MAX_DATA_LENGTH: usize = u16::MAX as usize;
+
     /// Creates a new mDNS [`Response`].
     #[inline]
     #[must_use]
@@ -767,15 +778,14 @@ impl Response {
         response_type: DnsType,
         response_class: DnsClass,
         ttl: u32,
-        data_length: u16,
         data: Vec<u8>,
     ) -> Self {
+        assert!(data.len() <= Self::MAX_DATA_LENGTH);
         Self {
             name,
             response_type,
             response_class,
             ttl,
-            data_length,
             data,
         }
     }
@@ -812,7 +822,7 @@ impl Response {
     #[inline]
     #[must_use]
     pub fn data_length(&self) -> u16 {
-        self.data_length
+        self.data.len() as u16
     }
 
     /// Returns the actual data of the response.
@@ -829,9 +839,12 @@ impl Response {
     }
 
     /// Sets the data for this response.
+    /// 
+    /// # Panics
+    /// This function will panic if `data.len() > Self::MAX_DATA_LENGTH`.
     #[inline]
     pub fn set_data(&mut self, data: Vec<u8>) {
-        self.data_length = data.len() as u16;
+        assert!(data.len() <= Self::MAX_DATA_LENGTH);
         self.data = data;
     }
 }
@@ -867,6 +880,38 @@ impl MdnsPacket {
         authorities: Vec<Response>,
         additionals: Vec<Response>,
     ) -> Self {
+        Self {
+            header,
+            questions,
+            answers,
+            authorities,
+            additionals,
+        }
+    }
+
+    /// Creates a new query [`MdnsPacket`] containing the given records.
+    /// 
+    /// This automatically derives the header flags for the query.
+    #[must_use]
+    pub fn new_with_records(
+        transaction_id: u16,
+        questions: Vec<Query>,
+        answers: Vec<Response>,
+        authorities: Vec<Response>,
+        additionals: Vec<Response>,
+    ) -> Self {
+        let mut flags = MdnsFlags::new();
+        flags.set_opcode(Opcode::Query);
+        flags.set_qr(!answers.is_empty());
+        flags.set_aa(!authorities.is_empty());
+        let header = MdnsHeader {
+            id: transaction_id,
+            flags,
+            total_questions: questions.len() as u16,
+            total_answers: answers.len() as u16,
+            total_authority_records: authorities.len() as u16,
+            total_additional_records: additionals.len() as u16,
+        };
         Self {
             header,
             questions,
@@ -1183,7 +1228,6 @@ mod tests {
             DnsType::A,
             DnsClass::IN,
             120,
-            4,
             vec![127, 0, 0, 1],
         );
 
@@ -1241,7 +1285,6 @@ mod tests {
             DnsType::A,
             DnsClass::IN,
             120,
-            4,
             vec![127, 0, 0, 1],
         );
 
