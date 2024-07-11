@@ -33,19 +33,76 @@ use std::{
 };
 
 use mio::{
-    net::UdpSocket,
-    Events,
-    Interest,
-    Poll,
-    Token,
+    event::Event, net::UdpSocket, Events, Interest, Poll, Token
 };
 
 use crate::{
-    MdnsPacket, MdnsService, MdnsServiceError, TxtRecords
+    DnsType, MdnsPacket, MdnsService, MdnsServiceError, Response, TxtRecords
 };
 
 /// Convenience type for a thread-safe [`Vec<MdnsService>`].
 pub type MdnsServices = Arc<Mutex<Vec<MdnsService>>>;
+
+/// Listens for mDNS packets.
+pub struct MdnsListener {
+    poll: Poll,
+    events: Events,
+    buffer: Vec<u8>,
+}
+
+impl MdnsListener {
+    /// [`Token`] that identifies that an event was received from the IPv4
+    /// socket.
+    pub const IPV4_POLL_TOKEN: Token = Token(0);
+
+    /// [`Token`] that identifies that an event was received from the IPv6
+    /// socket.
+    pub const IPV6_POLL_TOKEN: Token = Token(1);
+
+    /// Capacity of [`Self::events`].
+    const POLL_EVENT_CAPACITY: usize = 128;
+
+    /// Number of bytes in the [`Self::buffer`].
+    const RECEIVE_BUFFER_SIZE: usize = 512;
+
+    /// Creates a new [`MdnsListener`].
+    pub fn new(socket_ipv4: &mut UdpSocket, socket_ipv6: &mut UdpSocket) -> Result<Self, std::io::Error> {
+        let poll = Poll::new()?;
+        let events = Events::with_capacity(Self::POLL_EVENT_CAPACITY);
+        poll.registry().register(
+            socket_ipv4,
+            Self::IPV4_POLL_TOKEN,
+            Interest::READABLE | Interest::WRITABLE,
+        )?;
+        poll.registry().register(
+            socket_ipv6,
+            Self::IPV6_POLL_TOKEN,
+            Interest::READABLE | Interest::WRITABLE,
+        )?;
+        let buffer = Vec::with_capacity(Self::RECEIVE_BUFFER_SIZE);
+        Ok(Self { poll, events, buffer })
+    }
+
+    /// Ticks the [`MdnsListener`].
+    /// 
+    /// This function parses mDNS packets received over the network and executes
+    /// the specified function.
+    /// network.
+    pub fn tick<R, P>(&mut self, receive: R, mut process: P) -> Result<(), std::io::Error>
+    where
+        R: Fn(&Event, &mut [u8]) -> Result<(usize, SocketAddr), std::io::Error>,
+        P: FnMut(MdnsPacket, SocketAddr) -> Result<(), std::io::Error>,
+    {
+        self.poll.poll(&mut self.events, None)?;
+        for event in self.events.iter() {
+            let (received_bytes, src) = receive(event, &mut self.buffer)?;
+            let packet = &self.buffer[..received_bytes];
+            let packet = MdnsPacket::from_bytes(packet);
+            process(packet, src)?;
+        }
+        Ok(())
+    }
+}
 
 /// Internal mDNS broadcaster.
 /// 
@@ -58,8 +115,10 @@ struct MdnsBroadcasterInternal {
     socket_ipv6: UdpSocket,
     /// Time-to-live for mDNS packets.
     ttl: u32,
-    poll: Poll,
-    events: Events,
+    /// [`MdnsListener`] responsible for listening for [`MdnsPacket`]s over the
+    /// network. These packets are then responded to by the
+    /// [`MdnsBroadcasterInternal`].
+    listener: MdnsListener,
     /// Time of the last mDNS broadcast.
     last_broadcast: Instant,
     /// Interval between mDNS broadcasts.
@@ -87,17 +146,6 @@ impl MdnsBroadcasterInternal {
         IpAddr::V6(Self::IPV6_MULTICAST_ADDRESS),
         Self::MULTICAST_PORT,
     );
-
-    /// Capacity of [`Self::events`].
-    const POLL_EVENT_CAPACITY: usize = 128;
-
-    /// [`Token`] that identifies that an event was received from
-    /// [`Self::socket_ipv4`].
-    const IPV4_POLL_TOKEN: Token = Token(0);
-
-    /// [`Token`] that identifies that an event was received from
-    /// [`Self::socket_ipv6`].
-    const IPV6_POLL_TOKEN: Token = Token(1);
     
     /// Creates a new [`MdnsBroadcasterInternal`] instance.
     pub fn new(
@@ -141,17 +189,9 @@ impl MdnsBroadcasterInternal {
         )?;
 
         // Create poll:
-        let poll = Poll::new()?;
-        let events = Events::with_capacity(Self::POLL_EVENT_CAPACITY);
-        poll.registry().register(
+        let listener = MdnsListener::new(
             &mut socket_ipv4,
-            Self::IPV4_POLL_TOKEN,
-            Interest::READABLE | Interest::WRITABLE,
-        )?;
-        poll.registry().register(
             &mut socket_ipv6,
-            Self::IPV6_POLL_TOKEN,
-            Interest::READABLE | Interest::WRITABLE,
         )?;
 
         // Construct and return the broadcaster:
@@ -162,8 +202,7 @@ impl MdnsBroadcasterInternal {
             socket_ipv4,
             socket_ipv6,
             ttl,
-            poll,
-            events,
+            listener,
             last_broadcast: Instant::now().sub(Duration::from_millis(ttl as u64)),
             broadcast_interval: Duration::from_millis(ttl as u64),
         })
@@ -190,11 +229,34 @@ impl MdnsBroadcasterInternal {
         Ok(())
     }
 
-    /// Listens for mDNS questions.
     fn listen(&mut self) -> Result<(), std::io::Error> {
-        self.poll.poll(&mut self.events, Some(Duration::from_millis(500)))?;
-        for event in self.events.iter() {
-            // TODO: respond here
+        let mut responses = Vec::new();
+        self.listener.tick(
+            |event, buffer| {
+                match event.token() {
+                    MdnsListener::IPV4_POLL_TOKEN => self.socket_ipv4.recv_from(buffer),
+                    MdnsListener::IPV6_POLL_TOKEN => self.socket_ipv6.recv_from(buffer),
+                    _ => unreachable!(),
+                }
+            },
+            |packet, _src| {
+                let mut answers = Vec::new();
+
+                // TODO: Populate answers here
+                
+                if !answers.is_empty() {
+                    responses.push(MdnsPacket::new_response(
+                        packet.transaction_id(),
+                        answers,
+                        Vec::new(),
+                        Vec::new(),
+                    ));
+                }
+                Ok(())
+            },
+        )?;
+        for response in responses {
+            self.broadcast(response)?;
         }
         Ok(())
     }

@@ -790,6 +790,40 @@ impl Response {
         }
     }
 
+    /// Creates a new A record mDNS [`Response`].
+    #[must_use]
+    pub fn new_a(
+        name: DnsName,
+        ttl: u32,
+        ipv4_bytes: Vec<u8>,
+    ) -> Self {
+        assert_eq!(ipv4_bytes.len(), 4);
+        Self {
+            name,
+            response_type: DnsType::A,
+            response_class: DnsClass::IN,
+            ttl,
+            data: ipv4_bytes,
+        }
+    }
+
+    /// Creates a new AAAA record mDNS [`Response`].
+    #[must_use]
+    pub fn new_aaaa(
+        name: DnsName,
+        ttl: u32,
+        ipv6_bytes: Vec<u8>,
+    ) -> Self {
+        assert_eq!(ipv6_bytes.len(), 16);
+        Self {
+            name,
+            response_type: DnsType::AAAA,
+            response_class: DnsClass::IN,
+            ttl,
+            data: ipv6_bytes,
+        }
+    }
+
     /// Creates a new SRV mDNS [`Response`].
     /// 
     /// An SRV response is a type of DNS response that specifies information
@@ -1020,6 +1054,13 @@ impl MdnsPacket {
         }
     }
 
+    /// Returns the transaction ID of the [`MdnsPacket`].
+    #[inline]
+    #[must_use]
+    pub fn transaction_id(&self) -> u16 {
+        self.header.id
+    }
+
     /// Returns an immutable reference to the header of the [`MdnsPacket`].
     #[inline]
     #[must_use]
@@ -1134,6 +1175,12 @@ impl MdnsPacket {
         write_responses(&mut packet, &self.authorities);
         write_responses(&mut packet, &self.additionals);
         packet
+    }
+
+    /// Converts raw mDNS packet bytes into an [`MdnsPacket`].
+    #[must_use]
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        todo!()
     }
 }
 
