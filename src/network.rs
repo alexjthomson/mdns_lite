@@ -33,7 +33,6 @@ use std::{
 };
 
 use mio::{
-    event::Event,
     net::UdpSocket,
     Events,
     Interest,
@@ -42,39 +41,32 @@ use mio::{
 };
 
 use crate::{
-    MdnsService,
-    MdnsServiceError,
-    TxtRecords,
+    MdnsPacket, MdnsService, MdnsServiceError, TxtRecords
 };
 
-// TODO:
-// This struct should register services. These services are then broadcast. The
-// broadcaster will also respond to queries about the service.
-pub struct MdnsBroadcaster {
-    services: Arc<Mutex<Vec<MdnsService>>>,
-    /// Interval between broadcasts in milliseconds.
-    broadcast_interval: u64,
-    /// Contains the [`JoinHandle`] for the [`MdnsBroadcaster`] thread.
-    handle: Option<JoinHandle<()>>,
-    /// A flag that tells the thread to stop.
-    stop_flag: Arc<AtomicBool>,
+/// Convenience type for a thread-safe [`Vec<MdnsService>`].
+pub type MdnsServices = Arc<Mutex<Vec<MdnsService>>>;
+
+/// Internal mDNS broadcaster.
+/// 
+/// This is created by [`MdnsBroadcaster`] and is run on its own thread.
+struct MdnsBroadcasterInternal {
+    services: MdnsServices,
+    device_ipv4: Option<Vec<u8>>,
+    device_ipv6: Option<Vec<u8>>,
+    socket_ipv4: UdpSocket,
+    socket_ipv6: UdpSocket,
+    /// Time-to-live for mDNS packets.
+    ttl: u32,
+    poll: Poll,
+    events: Events,
+    /// Time of the last mDNS broadcast.
+    last_broadcast: Instant,
+    /// Interval between mDNS broadcasts.
+    broadcast_interval: Duration,
 }
 
-impl Default for MdnsBroadcaster {
-    #[inline]
-    #[must_use]
-    fn default() -> Self {
-        Self::new(
-            Vec::new(),
-            Self::DEFAULT_BROADCAST_INTERVAL
-        )
-    }
-}
-
-impl MdnsBroadcaster {
-    /// Default value for [`Self::broadcast_interval`].
-    pub const DEFAULT_BROADCAST_INTERVAL: u64 = 60 * 1000;
-
+impl MdnsBroadcasterInternal {
     /// Port used for mDNS multicast.
     pub const MULTICAST_PORT: u16 = 5353;
 
@@ -96,12 +88,180 @@ impl MdnsBroadcaster {
         Self::MULTICAST_PORT,
     );
 
+    /// Capacity of [`Self::events`].
+    const POLL_EVENT_CAPACITY: usize = 128;
+
+    /// [`Token`] that identifies that an event was received from
+    /// [`Self::socket_ipv4`].
+    const IPV4_POLL_TOKEN: Token = Token(0);
+
+    /// [`Token`] that identifies that an event was received from
+    /// [`Self::socket_ipv6`].
+    const IPV6_POLL_TOKEN: Token = Token(1);
+    
+    /// Creates a new [`MdnsBroadcasterInternal`] instance.
+    pub fn new(
+        services: MdnsServices,
+        device_ipv4: Option<Vec<u8>>,
+        device_ipv6: Option<Vec<u8>>,
+        ttl: u32,
+    ) -> Result<Self, std::io::Error> {
+        // Create IPv4 socket:
+        let mut socket_ipv4 = UdpSocket::bind(
+            SocketAddr::V4(
+                SocketAddrV4::new(
+                    Ipv4Addr::UNSPECIFIED,
+                    0,
+                )
+            )
+        )?;
+        socket_ipv4.set_broadcast(true)?;
+        socket_ipv4.set_multicast_loop_v4(true)?;
+        socket_ipv4.join_multicast_v4(
+            &Self::IPV4_MULTICAST_ADDRESS,
+            &Ipv4Addr::UNSPECIFIED,
+        )?;
+
+        // Create IPv6 socket:
+        let mut socket_ipv6 = UdpSocket::bind(
+            SocketAddr::V6(
+                SocketAddrV6::new(
+                    Ipv6Addr::UNSPECIFIED,
+                    0,
+                    0,
+                    0,
+                )
+            )
+        )?;
+        socket_ipv6.set_broadcast(true)?;
+        socket_ipv6.set_multicast_loop_v6(true)?;
+        socket_ipv6.join_multicast_v6(
+            &Self::IPV6_MULTICAST_ADDRESS,
+            0,
+        )?;
+
+        // Create poll:
+        let poll = Poll::new()?;
+        let events = Events::with_capacity(Self::POLL_EVENT_CAPACITY);
+        poll.registry().register(
+            &mut socket_ipv4,
+            Self::IPV4_POLL_TOKEN,
+            Interest::READABLE | Interest::WRITABLE,
+        )?;
+        poll.registry().register(
+            &mut socket_ipv6,
+            Self::IPV6_POLL_TOKEN,
+            Interest::READABLE | Interest::WRITABLE,
+        )?;
+
+        // Construct and return the broadcaster:
+        Ok(Self {
+            services,
+            device_ipv4,
+            device_ipv6,
+            socket_ipv4,
+            socket_ipv6,
+            ttl,
+            poll,
+            events,
+            last_broadcast: Instant::now().sub(Duration::from_millis(ttl as u64)),
+            broadcast_interval: Duration::from_millis(ttl as u64),
+        })
+    }
+
+    /// Broadcasts an [`MdnsPacket`].
+    pub fn broadcast(&self, packet: MdnsPacket) -> Result<(), std::io::Error> {
+        let packet = packet.to_bytes();
+        self.socket_ipv4.send_to(
+            &packet,
+            Self::IPV4_MULTICAST_SOCKET_ADDRESS,
+        )?;
+        self.socket_ipv6.send_to(
+            &packet,
+            Self::IPV6_MULTICAST_SOCKET_ADDRESS,
+        )?;
+        Ok(())
+    }
+
+    /// Ticks the [`MdnsBroadcasterInternal`].
+    pub fn tick(&mut self) -> Result<(), std::io::Error> {
+        self.listen()?;
+        self.broadcast_services()?;
+        Ok(())
+    }
+
+    /// Listens for mDNS questions.
+    fn listen(&mut self) -> Result<(), std::io::Error> {
+        self.poll.poll(&mut self.events, Some(Duration::from_millis(500)))?;
+        for event in self.events.iter() {
+            // TODO: respond here
+        }
+        Ok(())
+    }
+
+    /// Attempts to broadcast the mDNS services.
+    /// 
+    /// This will only broadcast the services if the broadcast interval has expired.
+    fn broadcast_services(&mut self) -> Result<(), std::io::Error> {
+        if self.last_broadcast.elapsed() > self.broadcast_interval {
+            let services = self.services.lock().unwrap();
+            self.last_broadcast = Instant::now();
+            for service in services.iter() {
+                self.broadcast_service(service)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Broadcasts an [`MdnsService`].
+    fn broadcast_service(&self, service: &MdnsService) -> Result<(), std::io::Error> {
+        match service.to_service_announcement_packet(
+            self.ttl,
+            self.device_ipv4.as_ref(),
+            self.device_ipv6.as_ref(),
+        ) {
+            Ok(packet) => self.broadcast(packet)?,
+            Err(error) => log::error!(
+                "Failed to create service announcement packet for service `{}`: {}",
+                service.service_name(),
+                error,
+            ),
+        }
+        Ok(())
+    }
+}
+
+pub struct MdnsBroadcaster {
+    services: MdnsServices,
+    /// Interval between broadcasts in milliseconds.
+    broadcast_interval: u32,
+    /// Contains the [`JoinHandle`] for the [`MdnsBroadcaster`] thread.
+    handle: Option<JoinHandle<()>>,
+    /// A flag that tells the thread to stop.
+    stop_flag: Arc<AtomicBool>,
+}
+
+impl Default for MdnsBroadcaster {
+    #[inline]
+    #[must_use]
+    fn default() -> Self {
+        Self::new(
+            Vec::new(),
+            Self::DEFAULT_BROADCAST_INTERVAL,
+        )
+    }
+}
+
+impl MdnsBroadcaster {
+    /// Default value for [`Self::broadcast_interval`].
+    pub const DEFAULT_BROADCAST_INTERVAL: u32 = 60 * 1000;
+
     /// Creates a new empty [`MdnsBroadcaster`].
     #[inline]
     #[must_use]
     pub fn new(
         services: Vec<MdnsService>,
-        broadcast_interval: u64,
+        broadcast_interval: u32,
     ) -> Self {
         Self {
             services: Arc::new(Mutex::new(services)),
@@ -155,187 +315,45 @@ impl MdnsBroadcaster {
         services.push(service);
     }
 
-    /// Returns the first local IPv4 and IPv6 address found when iterating
-    /// through the available interfaces.
-    fn get_local_ip_addresses() -> (Option<Vec<u8>>, Option<Vec<u8>>) {
-        match get_if_addrs::get_if_addrs() {
-            Ok(interfaces) => {
-                let mut ipv4 = None;
-                let mut ipv6 = None;
-                for interface in interfaces {
-                    if interface.is_loopback() {
-                        continue;
-                    }
-                    match interface.addr.ip() {
-                        IpAddr::V4(ip) if ipv4.is_none() => ipv4 = Some(ip.octets().to_vec()),
-                        IpAddr::V6(ip) if ipv6.is_none() => ipv6 = Some(ip.octets().to_vec()),
-                        _ => continue,
-                    }
-                }
-                (ipv4, ipv6)
-            }
-            Err(error) => {
-                log::error!("Failed to get local IPv4 and IPv6 addresses: {error}");
-                (None, None)
-            }
-        }
-    }
-
-    /// Creates a pair of IPv4 and IPv6 [`UdpSocket`]s.
-    fn create_sockets() -> Result<(UdpSocket, UdpSocket), std::io::Error> {
-        // Create IPv4 socket:
-        let ipv4_socket = UdpSocket::bind(
-            SocketAddr::V4(
-                SocketAddrV4::new(
-                    Ipv4Addr::UNSPECIFIED,
-                    0,
-                )
-            )
-        )?;
-        ipv4_socket.set_broadcast(true)?;
-        ipv4_socket.set_multicast_loop_v4(true)?;
-        ipv4_socket.join_multicast_v4(
-            &Self::IPV4_MULTICAST_ADDRESS,
-            &Ipv4Addr::UNSPECIFIED,
-        )?;
-
-        // Create IPv6 socket:
-        let ipv6_socket = UdpSocket::bind(
-            SocketAddr::V6(
-                SocketAddrV6::new(
-                    Ipv6Addr::UNSPECIFIED,
-                    0,
-                    0,
-                    0,
-                )
-            )
-        )?;
-        ipv6_socket.set_broadcast(true)?;
-        ipv6_socket.set_multicast_loop_v6(true)?;
-        ipv6_socket.join_multicast_v6(
-            &Self::IPV6_MULTICAST_ADDRESS,
-            0,
-        )?;
-
-        // Return sockets:
-        Ok((ipv4_socket, ipv6_socket))
-    }
-
-    fn broadcast_services(
-        services: Arc<Mutex<Vec<MdnsService>>>,
-        ttl: u32,
-        ipv4_socket: &UdpSocket,
-        ipv6_socket: &UdpSocket,
-    ) {
-        // Lock the services:
-        let services = services.lock().unwrap();
-
-        // Check if there are services to broadcast:
-        if !services.is_empty() {
-            // There are services to broadcast. We should continue gathering
-            // information before broadcasting the services:
-            let (ipv4_local, ipv6_local) = Self::get_local_ip_addresses();
-
-            // We now have all of the information we need to broadcast an mDNS
-            // packet for each of the services:
-            for service in services.iter() {
-                // Send the packet to the mDNS IPv4 and IPv6 addresses:
-                match service.to_service_announcement_packet(
-                    ttl,
-                    ipv4_local.as_ref(),
-                    ipv6_local.as_ref(),
-                ) {
-                    Ok(packet) => {
-                        let packet = packet.to_bytes();
-                        if let Err(error) = ipv4_socket.send_to(&packet, Self::IPV4_MULTICAST_SOCKET_ADDRESS) {
-                            log::error!("Failed to broadcast mDNS packet to IPv4 multicast host: {error}");
-                        }
-                        if let Err(error) = ipv6_socket.send_to(&packet, Self::IPV6_MULTICAST_SOCKET_ADDRESS) {
-                            log::error!("Failed to broadcast mDNS packet to IPv6 multicast host: {error}");
-                        }
-                    },
-                    Err(error) => log::error!(
-                        "Failed to broadcast service `{}`: {}",
-                        service.service_name(),
-                        error,
-                    ),
-                }
-            }
-        }
-    }
-
-    /// Responds to an mDNS packet.
-    fn respond_to_mdns(
-        services: Arc<Mutex<Vec<MdnsService>>>,
-        ttl: u32,
-        event: &Event,
-        is_ipv6: bool,
-    ) {
-        log::info!("Received mDNS packet: {event:?}")
-        // TODO
-    }
-
     /// Starts the [`MdnsBroadcaster`].
     /// 
     /// If the broadcaster has already been started, this will do nothing.
-    pub fn start(&mut self) {
+    pub fn start(
+        &mut self,
+        device_ipv4: Option<Ipv4Addr>,
+        device_ipv6: Option<Ipv6Addr>,
+    ) {
+        // Check if the broadcaster is currently running, if it is, stop here:
         if self.handle.is_some() {
             return;
         }
+
+        // Reset the stop flag:
         self.stop_flag.store(false, Ordering::Relaxed);
         let stop_flag = self.stop_flag.clone();
-        let services = self.services.clone();
-        let broadcast_interval = Duration::from_millis(self.broadcast_interval);
-        let ttl = broadcast_interval.as_secs() as u32;
+
+        // Create the internal broadcaster:
+        let mut broadcaster = MdnsBroadcasterInternal::new(
+            self.services.clone(),
+            device_ipv4.map(|ipv4| ipv4.octets().to_vec()),
+            device_ipv6.map(|ipv6| ipv6.octets().to_vec()),
+            self.broadcast_interval,
+        ).unwrap();
+
+        // Start the broadcaster thread:
         let handle = thread::spawn(move || {
-            // Create the IPv4 and IPv6 sockets to send multicast packets on:
-            let (mut ipv4_socket, mut ipv6_socket) = Self::create_sockets().unwrap();
-
-            // Create poll instance:
-            let mut poll = Poll::new().unwrap();
-            let mut events = Events::with_capacity(128);
-            poll.registry().register(
-                &mut ipv4_socket,
-                Token(0),
-                Interest::READABLE | Interest::WRITABLE
-            ).unwrap();
-            poll.registry().register(
-                &mut ipv6_socket,
-                Token(1),
-                Interest::READABLE | Interest::WRITABLE
-            ).unwrap();
-
-            let mut last_broadcast = Instant::now().sub(broadcast_interval);
-
-            // Enter main loop:
             loop {
-                // Broadcast services:
-                if last_broadcast.elapsed() > broadcast_interval {
-                    Self::broadcast_services(
-                        services.clone(),
-                        ttl,
-                        &ipv4_socket,
-                        &ipv6_socket,
-                    );
-                    last_broadcast = Instant::now();
+                if let Err(error) = broadcaster.tick() {
+                    log::error!("mDNS tick error: {error}");
                 }
-
-                // Poll mDNS events:
-                poll.poll(&mut events, Some(Duration::from_millis(500))).unwrap();
-                for event in events.iter() {
-                    match event.token() {
-                        Token(0) => Self::respond_to_mdns(services.clone(), ttl, event, false),
-                        Token(1) => Self::respond_to_mdns(services.clone(), ttl, event, true),
-                        _ => unreachable!(),
-                    }
-                }
-
                 // Check if the loop should exit:
                 if stop_flag.load(Ordering::Relaxed) {
                     break;
                 }
             }
         });
+
+        // Assign the handle:
         self.handle = Some(handle);
     }
 

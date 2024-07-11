@@ -7,23 +7,22 @@ use mdns_lite::prelude::*;
 
 fn main() {
     let mut txt_records = TxtRecords::new();
-    txt_records.add("type", "temperature").unwrap();
-    txt_records.add("model", "MyTemperatureSensor").unwrap();
-    txt_records.add("manufacturer", "MyManufacturer").unwrap();
-    txt_records.add("location", "LivingRoom").unwrap();
-    txt_records.add("temp_unit", "C").unwrap();
+    txt_records.add("type", "sensor").unwrap();
+    txt_records.add("device_class", "temperature").unwrap();
+    txt_records.add("friendly_name", "Test Temperature Sensor").unwrap();
+    txt_records.add("unit", "C").unwrap();
     let service = MdnsService::new(
-        "my_thermometer",
-        "_temperature._tcp",
+        "           MyThermometer",
+        "_home-assistant._tcp",
         "local",
         80,
         txt_records,
     ).unwrap();
     let mut broadcaster = MdnsBroadcaster::new(
         vec![service],
-        60 * 1000
+        60 * 1000   
     );
-    broadcaster.start();
+    broadcaster.start(None, None);  
 
     // Sleep for 5 minutes:
     sleep(Duration::from_secs(300));

@@ -15,7 +15,7 @@ fn main() {
     ).unwrap();
 
     // Start broadcaster:
-    broadcaster.start();
+    broadcaster.start(None, None);
 
     // Sleep for 5 minutes:
     sleep(Duration::from_secs(300));
