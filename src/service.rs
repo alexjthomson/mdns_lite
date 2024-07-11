@@ -5,6 +5,8 @@
 use heapless::FnvIndexMap;
 use thiserror::Error;
 
+use crate::{DnsClass, DnsName, DnsType, MdnsPacket, Response};
+
 /// Defines errors that can occur when interacting with [`MdnsService`] or
 /// [`MdnsTxtRecords`].
 #[derive(PartialEq, Eq, Clone, Debug, Error)]
@@ -29,6 +31,9 @@ pub enum MdnsServiceError {
     InvalidServiceTypeProtocol(String),
     #[error("Invalid service domain: `{0}`.")]
     InvalidServiceDomain(String),
+    #[error("TXT record entry too long.
+    TXT records can be a maximum of 254 bytes long (key + value).")]
+    TxtRecordEntryTooLong,
 }
 
 /// A heapless mDNS TXT record storage that holds a maximum of `16` records.
@@ -164,6 +169,24 @@ impl TxtRecords {
             buffer.push(0_u8); // Null terminator for each record
         }
         buffer
+    }
+
+    /// Converts the [`TxtRecords`] into wire format.
+    /// 
+    /// This format contains the length of each record at the start, followed by
+    /// the record itself.
+    pub fn to_wire_format(&self) -> Result<Vec<u8>, MdnsServiceError> {
+        let mut bytes = Vec::new();
+        for (key, value) in &self.records {
+            let kv_string = format!("{key}={value}");
+            let kv_length = kv_string.len();
+            if kv_length > 255 {
+                return Err(MdnsServiceError::TxtRecordEntryTooLong);
+            }
+            bytes.push(kv_length as u8);
+            bytes.extend_from_slice(kv_string.as_bytes());
+        }
+        Ok(bytes)
     }
 }
 
@@ -461,6 +484,116 @@ impl MdnsService {
         key: &str,
     ) -> Option<&String> {
         self.txt_records.get(key)
+    }
+
+    /// Calculates and returns the full service [`DnsName`].
+    #[must_use]
+    pub fn service_name(&self) -> DnsName {
+        DnsName::new(self.labels().to_vec())
+    }
+
+    /// Calculates and returns the full host [`DnsName`].
+    /// 
+    /// This is the same as the [`Self::service_name()`], but without the
+    /// service type included.
+    #[must_use]
+    pub fn host_name(&self) -> DnsName {
+        let capacity: usize = self.instance_name_labels.len() + 1;
+        let mut labels: Vec<String> = Vec::with_capacity(capacity);
+        labels.extend(self.instance_name_labels.iter().cloned());
+        labels.push(self.service_domain.clone());
+        DnsName::new(labels.to_vec())
+    }
+
+    /// Creates an [`MdnsPacket`] that announces this service.
+    pub fn to_service_announcement_packet(
+        &self,
+        ttl: u32,
+        ipv4: Option<&Vec<u8>>,
+        ipv6: Option<&Vec<u8>>,
+    ) -> Result<MdnsPacket, MdnsServiceError> {
+        let service_name = self.service_name();
+        let service_name_bytes = service_name.to_wire_format();
+        let host_name = self.host_name();
+        let host_name_bytes = host_name.to_wire_format();
+
+        // Construct answers:
+        let mut answers = Vec::with_capacity(3);
+
+        // PTR Record:
+        // This record maps the service type to the specific service instance.
+        answers.push(Response::new(
+            DnsName::new({
+                // The DNS name for the PTR record should only contain the
+                // service type:
+                let mut service_type_labels = Vec::new();
+                service_type_labels.extend(self.service_type_labels.iter().cloned());
+                service_type_labels.push(self.service_domain.clone());
+                service_type_labels
+            }),
+            DnsType::PTR,
+            DnsClass::IN,
+            ttl,
+            service_name_bytes.clone(),
+        ));
+
+        // SRV Record:
+        // This record provides the hostname and port where the service can be
+        // accessed.
+        answers.push(Response::new_srv(
+            service_name.clone(),
+            ttl,
+            0,
+            0,
+            self.port,
+            &host_name_bytes,
+        ));
+
+        // TXT Record:
+        // This record contains the key-value pairs with additional information
+        // about the service. This record is only included if there are any TXT
+        // records included with the service:
+        if !self.txt_records.is_empty() {
+            answers.push(Response::new(
+                service_name.clone(),
+                DnsType::TXT,
+                DnsClass::IN,
+                ttl,
+                self.txt_records.to_wire_format()?,
+            ));
+        }
+
+        // Construct authority records:
+        // The authority records maps the host name to the device IPv4 and IPv6
+        // addresses.
+        let mut authoritative_nameservers = Vec::new();
+        if let Some(ipv4) = ipv4 {
+            authoritative_nameservers.push(Response::new(
+                host_name.clone(),
+                DnsType::A,
+                DnsClass::IN,
+                ttl,
+                ipv4.clone(),
+            ));
+        }
+        if let Some(ipv6) = ipv6 {
+            authoritative_nameservers.push(Response::new(
+                host_name,
+                DnsType::AAAA,
+                DnsClass::IN,
+                ttl,
+                ipv6.clone(),
+            ));
+        }
+
+        // Construct and return the packet:
+        Ok(MdnsPacket::new_with_records(
+            0,
+            Vec::new(),
+            answers,
+            authoritative_nameservers,
+            Vec::new(),
+        ))
     }
 }
 

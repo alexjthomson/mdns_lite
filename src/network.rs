@@ -12,25 +12,39 @@ use std::{
         SocketAddr,
         SocketAddrV4,
         SocketAddrV6,
-    }, ops::Sub, sync::{
+    },
+    ops::Sub,
+    sync::{
         atomic::{
             AtomicBool,
             Ordering,
         },
         Arc,
         Mutex,
-    }, thread::{
+    },
+    thread::{
         self,
         JoinHandle,
-    }, time::{Duration, Instant}
+    },
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 use mio::{
-    event::Event, net::UdpSocket, Events, Interest, Poll, Token
+    event::Event,
+    net::UdpSocket,
+    Events,
+    Interest,
+    Poll,
+    Token,
 };
 
 use crate::{
-    DnsClass, DnsName, DnsType, MdnsPacket, MdnsService, MdnsServiceError, Query, Response, TxtRecords
+    MdnsService,
+    MdnsServiceError,
+    TxtRecords,
 };
 
 // TODO:
@@ -225,54 +239,26 @@ impl MdnsBroadcaster {
             // We now have all of the information we need to broadcast an mDNS
             // packet for each of the services:
             for service in services.iter() {
-                // Get the DNS name of the service:
-                let dns_name = DnsName::new(service.labels().to_vec());
-
-                // Construct the authoritative nameservers:
-                let mut authoritative_nameservers = Vec::new();
-                if let Some(ipv4_local) = &ipv4_local {
-                    authoritative_nameservers.push(
-                        Response::new(
-                            dns_name.clone(),
-                            DnsType::A,
-                            DnsClass::IN,
-                            ttl,
-                            ipv4_local.clone(),
-                        )
-                    );
-                }
-                if let Some(ipv6_local) = &ipv6_local {
-                    authoritative_nameservers.push(
-                        Response::new(
-                            dns_name.clone(),
-                            DnsType::AAAA,
-                            DnsClass::IN,
-                            ttl,
-                            ipv6_local.clone(),
-                        )
-                    );
-                }
-
-                // Construct the mDNS packet:
-                let packet = MdnsPacket::new_with_records(
-                    0,
-                    vec![Query::new(
-                        dns_name,
-                        DnsType::ANY,
-                        DnsClass::IN,
-                    )],
-                    Vec::new(),
-                    authoritative_nameservers,
-                    Vec::new(),
-                );
-
                 // Send the packet to the mDNS IPv4 and IPv6 addresses:
-                let packet = packet.to_bytes();
-                if let Err(error) = ipv4_socket.send_to(&packet, Self::IPV4_MULTICAST_SOCKET_ADDRESS) {
-                    log::error!("Failed to broadcast mDNS packet to IPv4 multicast host: {error}");
-                }
-                if let Err(error) = ipv6_socket.send_to(&packet, Self::IPV6_MULTICAST_SOCKET_ADDRESS) {
-                    log::error!("Failed to broadcast mDNS packet to IPv6 multicast host: {error}");
+                match service.to_service_announcement_packet(
+                    ttl,
+                    ipv4_local.as_ref(),
+                    ipv6_local.as_ref(),
+                ) {
+                    Ok(packet) => {
+                        let packet = packet.to_bytes();
+                        if let Err(error) = ipv4_socket.send_to(&packet, Self::IPV4_MULTICAST_SOCKET_ADDRESS) {
+                            log::error!("Failed to broadcast mDNS packet to IPv4 multicast host: {error}");
+                        }
+                        if let Err(error) = ipv6_socket.send_to(&packet, Self::IPV6_MULTICAST_SOCKET_ADDRESS) {
+                            log::error!("Failed to broadcast mDNS packet to IPv6 multicast host: {error}");
+                        }
+                    },
+                    Err(error) => log::error!(
+                        "Failed to broadcast service `{}`: {}",
+                        service.service_name(),
+                        error,
+                    ),
                 }
             }
         }

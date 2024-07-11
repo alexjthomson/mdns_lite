@@ -790,6 +790,38 @@ impl Response {
         }
     }
 
+    /// Creates a new SRV mDNS [`Response`].
+    /// 
+    /// An SRV response is a type of DNS response that specifies information
+    /// about available services in a domain. This type of response is used to
+    /// locate servers that provide specific services. An SRV response provides
+    /// details about the target host(s) that offer the requested service,
+    /// including their priority, weight, port number, and the hostname of the
+    /// server.
+    #[must_use]
+    pub fn new_srv(
+        name: DnsName,
+        ttl: u32,
+        priority: u16,
+        weight: u16,
+        port: u16,
+        hostname_bytes: &[u8],
+    ) -> Self {
+        let mut data = Vec::new();
+        data.extend(priority.to_be_bytes());
+        data.extend(weight.to_be_bytes());
+        data.extend(port.to_be_bytes());
+        data.extend_from_slice(hostname_bytes);
+        assert!(data.len() <= Self::MAX_DATA_LENGTH);
+        Self {
+            name,
+            response_type: DnsType::SRV,
+            response_class: DnsClass::IN,
+            ttl,
+            data,
+        }
+    }
+
     /// Returns the name associated with this response.
     #[inline]
     #[must_use]

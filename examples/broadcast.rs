@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use mdns_lite::MdnsBroadcaster;
+use mdns_lite::prelude::*;
 
 fn main() {
     // Create broadcaster and example service:
