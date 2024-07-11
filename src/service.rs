@@ -568,19 +568,15 @@ impl MdnsService {
         // addresses.
         let mut authoritative_nameservers = Vec::new();
         if let Some(ipv4) = ipv4 {
-            authoritative_nameservers.push(Response::new(
+            authoritative_nameservers.push(Response::new_a(
                 host_name.clone(),
-                DnsType::A,
-                DnsClass::IN,
                 ttl,
                 ipv4.clone(),
             ));
         }
         if let Some(ipv6) = ipv6 {
-            authoritative_nameservers.push(Response::new(
+            authoritative_nameservers.push(Response::new_aaaa(
                 host_name,
-                DnsType::AAAA,
-                DnsClass::IN,
                 ttl,
                 ipv6.clone(),
             ));
