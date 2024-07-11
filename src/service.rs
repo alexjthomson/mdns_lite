@@ -5,7 +5,13 @@
 use heapless::FnvIndexMap;
 use thiserror::Error;
 
-use crate::{DnsClass, DnsName, DnsType, MdnsPacket, Response};
+use crate::{
+    DnsClass,
+    DnsName,
+    DnsType,
+    MdnsPacket,
+    Response,
+};
 
 /// Defines errors that can occur when interacting with [`MdnsService`] or
 /// [`MdnsTxtRecords`].

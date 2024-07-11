@@ -1343,6 +1343,7 @@ mod tests {
             vec![],
             vec![],
         );
+        assert_eq!(packet.transaction_id(), 1234);
         assert_eq!(packet.header(), &header);
         assert_eq!(packet.questions().len(), 0);
         assert_eq!(packet.answers().len(), 0);

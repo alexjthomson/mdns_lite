@@ -1,8 +1,6 @@
 //! # ESP mDNS - Network
 //! This module manages the underlying network operations, such as socket
-//! management and network interface configuration. It provides the raw data to
-//! the protocol module for processing and sends out the processed mDNS packets.
-// TODO: Correct the documentation above
+//! management and network interface configuration.
 
 use std::{
     net::{
@@ -33,11 +31,19 @@ use std::{
 };
 
 use mio::{
-    event::Event, net::UdpSocket, Events, Interest, Poll, Token
+    event::Event,
+    net::UdpSocket,
+    Events,
+    Interest,
+    Poll,
+    Token,
 };
 
 use crate::{
-    DnsType, MdnsPacket, MdnsService, MdnsServiceError, Response, TxtRecords
+    MdnsPacket,
+    MdnsService,
+    MdnsServiceError,
+    TxtRecords,
 };
 
 /// Convenience type for a thread-safe [`Vec<MdnsService>`].
@@ -243,7 +249,7 @@ impl MdnsBroadcasterInternal {
                 let mut answers = Vec::new();
 
                 // TODO: Populate answers here
-                
+
                 if !answers.is_empty() {
                     responses.push(MdnsPacket::new_response(
                         packet.transaction_id(),
