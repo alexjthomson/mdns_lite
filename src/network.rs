@@ -103,8 +103,14 @@ impl MdnsListener {
         for event in self.events.iter() {
             let (received_bytes, src) = receive(event, &mut self.buffer)?;
             let packet = &self.buffer[..received_bytes];
-            let packet = MdnsPacket::from_bytes(packet);
-            process(packet, src)?;
+            match MdnsPacket::from_bytes(packet, &mut 0) {
+                Ok(packet) => {
+                    if let Err(error) = process(packet, src) {
+                        log::error!("Failed to process mDNS packet: {error}");
+                    }
+                },
+                Err(error) => log::error!("Failed to parse mDNS packet: {error}"),
+            }
         }
         Ok(())
     }
