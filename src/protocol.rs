@@ -310,8 +310,11 @@ pub enum ParseMdnsError {
     #[error("An mDNS response is malformed.
     There are not enough bytes to contain the remainder of the response after the name.")]
     MalformedResponse,
-    #[error("Label length exceeds data length.")]
-    InvalidLabelLength,
+    #[error("Label length exceeds data length `{length}` (maximum_length: `{max_length}`).")]
+    InvalidLabelLength {
+        length: usize,
+        max_length: usize,
+    },
     #[error("Label is not valid UTF-8.")]
     InvalidUtf8Label,
     #[error("Labels do not end with a zero byte.")]
@@ -673,6 +676,7 @@ impl DnsName {
     pub fn to_wire_format(&self) -> Vec<u8> {
         let mut wire_format = Vec::new();
         for label in &self.labels {
+            debug_assert!(label.is_ascii());
             wire_format.push(label.len() as u8);
             wire_format.extend_from_slice(label.as_bytes());
         }
@@ -683,23 +687,41 @@ impl DnsName {
     /// Create a [`DnsName`] from wire format
     pub fn from_wire_format(data: &[u8], offset: &mut usize) -> Result<Self, ParseMdnsError> {
         let mut labels = Vec::new();
-        let mut i = *offset;
+        let mut i: usize = *offset;
         while i < data.len() {
-            let len = data[i] as usize;
+            // Get the length of the next label:
+            let len: usize = data[i] as usize;
+
+            // Check for a null byte, this indicates that this is the end of the
+            // wire format labels. We should therefore stop here:
             if len == 0 {
                 break;
             }
 
-            if i + len + 1 > data.len() {
-                return Err(ParseMdnsError::InvalidLabelLength);
+            // We should iterate the offset by `1` since we just read the label
+            // length byte and it was not a null byte:
+            i += 1;
+
+            // We need to perform a range check to ensure that the `data` buffer
+            // has enough space to contain the label:
+            if i + len > data.len() {
+                return Err(ParseMdnsError::InvalidLabelLength {
+                    length: len,
+                    max_length: data.len() - i,
+                });
             }
 
-            let label = match std::str::from_utf8(&data[i+1..i+1+len]) {
+            // Read the label from the `data` buffer:
+            let label = match std::str::from_utf8(&data[i..(i + len)]) {
                 Ok(label) => label.to_string(),
                 Err(_) => return Err(ParseMdnsError::InvalidUtf8Label),
             };
+
+            // We can now push the constructed label to the `labels` vector:
             labels.push(label);
-            i += len + 1;
+
+            // We also need to move the offset to the start of the next label:
+            i += len;
         }
         if i == data.len() || data[i] != 0 {
             return Err(ParseMdnsError::InvalidEndOfLabels);
@@ -804,6 +826,23 @@ impl Query {
         })
     }
 
+    /// Converts the [`Query`] to raw bytes.
+    #[inline]
+    #[must_use]
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut buffer = Vec::new();
+        self.to_bytes_extend(&mut buffer);
+        buffer
+    }
+
+    /// Extends the `buffer` with the raw bytes that form this [`Query`].
+    #[inline]
+    pub fn to_bytes_extend(&self, buffer: &mut Vec<u8>) {
+        buffer.extend_from_slice(&self.name.to_wire_format());
+        buffer.extend_from_slice(&Into::<[u8; 2]>::into(self.query_type));
+        buffer.extend_from_slice(&Into::<[u8; 2]>::into(self.query_class));
+    }
+
     /// Returns an immutable reference to the name being queried.
     #[inline]
     #[must_use]
@@ -900,6 +939,26 @@ impl Response {
             ttl,
             data,
         })
+    }
+
+    /// Converts this [`Response`] into raw bytes.
+    #[inline]
+    #[must_use]
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut buffer = Vec::new();
+        self.to_bytes_extend(&mut buffer);
+        buffer
+    }
+
+    /// Writes the raw byte representation of this [`Response`] to the `buffer`.
+    #[inline]
+    pub fn to_bytes_extend(&self, buffer: &mut Vec<u8>) {
+        buffer.extend_from_slice(&self.name.to_wire_format());
+        buffer.extend_from_slice(&Into::<[u8; 2]>::into(self.response_type));
+        buffer.extend_from_slice(&Into::<[u8; 2]>::into(self.response_class));
+        buffer.extend_from_slice(&self.ttl.to_be_bytes());
+        buffer.extend_from_slice(&(self.data.len() as u16).to_be_bytes());
+        buffer.extend_from_slice(&self.data);
     }
 
     /// Creates a new A record mDNS [`Response`].
@@ -1267,19 +1326,12 @@ impl MdnsPacket {
         let mut packet: Vec<u8> = self.header.to_bytes().to_vec();
         fn write_queries(packet: &mut Vec<u8>, queries: &[Query]) {
             for query in queries.iter() {
-                packet.extend_from_slice(&query.name.to_wire_format());
-                packet.extend_from_slice(&Into::<[u8; 2]>::into(query.query_type));
-                packet.extend_from_slice(&Into::<[u8; 2]>::into(query.query_class));
+                query.to_bytes_extend(packet);
             }
         }
         fn write_responses(packet: &mut Vec<u8>, responses: &[Response]) {
             for response in responses.iter() {
-                packet.extend_from_slice(&response.name.to_wire_format());
-                packet.extend_from_slice(&Into::<[u8; 2]>::into(response.response_type));
-                packet.extend_from_slice(&Into::<[u8; 2]>::into(response.response_class));
-                packet.extend_from_slice(&response.ttl.to_be_bytes());
-                packet.extend_from_slice(&(response.data.len() as u16).to_be_bytes());
-                packet.extend_from_slice(&response.data);
+                response.to_bytes_extend(packet);
             }
         }
         write_queries(&mut packet, &self.question_records);
@@ -1638,7 +1690,101 @@ mod tests {
     }
 
     #[test]
+    fn test_header_from_bytes() {
+        let header_a = MdnsHeader {
+            id: 1234,
+            flags: MdnsFlags::from_bytes([0x84, 0x21]),
+            total_question_records: 10,
+            total_answer_records: 11,
+            total_authority_records: 12,
+            total_additional_records: 13,
+        };
+        let header_b = MdnsHeader::from_bytes(
+            &header_a.to_bytes(),
+            &mut 0,
+        ).unwrap();
+        assert_eq!(header_a, header_b);
+    }
+
+    #[test]
+    fn test_query_from_bytes() {
+        let query_a = Query::new(
+            DnsName::from_name("test_service._http._tcp.local.").unwrap(),
+            DnsType::PTR,
+            DnsClass::IN,
+        );
+        let query_b = Query::from_bytes(
+            &query_a.to_bytes(),
+            &mut 0,
+        ).expect("Failed to convert `query_a` to `query_b`");
+        assert_eq!(query_a, query_b);
+    }
+
+    #[test]
+    fn test_response_from_bytes() {
+        let response_a = Response::new(
+            DnsName::from_name("test_service._http._tcp.local.").unwrap(),
+            DnsType::PTR,
+            DnsClass::IN,
+            120,
+            vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+        );
+        let response_b = Response::from_bytes(
+            &response_a.to_bytes(),
+            &mut 0,
+        ).expect("Failed to convert `response_a` to `response_b`");
+        assert_eq!(response_a, response_b);
+    }
+
+    #[test]
     fn test_packet_from_bytes() {
-        // TODO
+        fn test_from_bytes(packet: MdnsPacket) {
+            let from_bytes = MdnsPacket::from_bytes(
+                &packet.to_bytes(),
+                &mut 0,
+            ).expect("Failed to convert raw packet bytes into a new packet");
+            assert_eq!(from_bytes, packet);
+        }
+        // Test query packet:
+        test_from_bytes(MdnsPacket::new_query(1234, vec![
+            Query::new(
+                DnsName::from_name("test_service._http._tcp.local.").unwrap(),
+                DnsType::PTR,
+                DnsClass::IN,
+            ),
+        ]));
+        // Test response packet:
+        test_from_bytes(
+            MdnsPacket::new_response(
+                1234,
+                vec![
+                        Response::new(
+                        DnsName::from_name("test_service._http._tcp.local.").unwrap(),
+                        DnsType::PTR,
+                        DnsClass::IN,
+                        120,
+                        vec![127, 0, 0, 1],
+                    )
+                ],
+                vec![
+                        Response::new(
+                        DnsName::from_name("test_service._http._tcp.local.").unwrap(),
+                        DnsType::PTR,
+                        DnsClass::IN,
+                        300,
+                        Vec::new(),
+                    )
+                ],
+                vec![
+                        Response::new(
+                        DnsName::from_name("test_service._http._tcp.local.").unwrap(),
+                        DnsType::PTR,
+                        DnsClass::IN,
+                        600,
+                        vec![0, 1, 2, 3, 4, 5, 6, 7],
+                    )
+                ],
+            )
+        );
     }
 }

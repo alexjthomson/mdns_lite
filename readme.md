@@ -10,4 +10,5 @@ for a central DNS server.
 - Support for adding TXT records with service metadata.
 
 ## Todo
-- [ ] Create unit tests for `MdnsPacket::from_bytes`.
+- [ ] Fix unit tests in `protocol.rs` not passing.
+- [x] Create unit tests for `MdnsPacket::from_bytes`.
