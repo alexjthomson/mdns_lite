@@ -339,7 +339,7 @@ pub enum ParseMdnsError {
 /// | NSCOUNT | 16          | Number of entries in the authority section.            |
 /// | ARCOUNT | 16          | Number of entries in the additional records section.   |
 /// 
-/// The total size of an mDNS header is 
+/// The total size of an mDNS header is 12 bytes.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct MdnsHeader {
     /// Transaction ID of the packet.
@@ -909,28 +909,57 @@ impl Response {
         bytes: &[u8],
         offset: &mut usize,
     ) -> Result<Self, ParseMdnsError> {
+        // Create a counter to track the new offset. This will become the new
+        // offset when the function finishes. The reason a second counter is
+        // used is to make this function act "transactionally". For example, if
+        // this function encounters an error mid-execution, the `offset` does
+        // not change because the function did not complete. This ensures that
+        // the `offset` passed into the function only gets updated if this
+        // function completes successfully:
         let mut i: usize = *offset;
 
-        // Get the response name:
-        let name = DnsName::from_wire_format(bytes, &mut i)?;
+        // The first part of a response packet is the name. The name uses wire
+        // formatting. This should be read first:
+        let name: DnsName = DnsName::from_wire_format(bytes, &mut i)?;
 
-        // Get the response type, response class, and TTL:
+        // After the name, 10 bytes of information is expected:
+        // - `response_type` (2 bytes)
+        // - `response_class` (2 bytes)
+        // - `ttl` (4 bytes)
+        // - `data_length` (2 bytes)
+        //
+        // This totals 10 bytes of data. We should first validate that there are
+        // 10 bytes of data available to be read:
         if bytes.len() - i < 10 {
             return Err(ParseMdnsError::MalformedResponse);
         }
+        // We can now read the bytes and apply the offset:
+        // TODO: This can be performed using `unchecked` functions since we have
+        // confirmed that the bytes exist above:
         let response_type = u16::from_be_bytes([bytes[i], bytes[i + 1]]).into();
         let response_class = u16::from_be_bytes([bytes[i + 2], bytes[i + 3]]).into();
         let ttl = u32::from_be_bytes([bytes[i + 4], bytes[i + 5], bytes[i + 6], bytes[i + 7]]);
         let data_length = u16::from_be_bytes([bytes[i + 8], bytes[i + 9]]) as usize;
         i += 10;
 
-        // Read the response data:
-        if bytes.len() - i < data_length {
-            return Err(ParseMdnsError::MalformedResponse);
-        }
-        let data = bytes[i..(i+data_length)].to_vec();
+        // Following the end of the last section, there should be `data_length`
+        // bytes containing a payload:
+        let data: Vec<u8> = if data_length > 0 {
+            // There is a data payload; therefore, we should check that
+            // `data_length` bytes exist:
+            if bytes.len() - i < data_length {
+                return Err(ParseMdnsError::MalformedResponse);
+            }
+            // We can now read the bytes and apply the offset:
+            let data: Vec<u8> = bytes[i..(i+data_length)].to_vec();
+            i += data_length;
+            data
+        } else {
+            Vec::new()
+        };
 
-        // Construct and return the query:
+        // The data required to construct the response has been read, we can now
+        // apply the final offset value and return the response:
         *offset = i;
         Ok(Self {
             name,
@@ -939,7 +968,7 @@ impl Response {
             ttl,
             data,
         })
-    }
+    }// Read the response data:
 
     /// Converts this [`Response`] into raw bytes.
     #[inline]
@@ -1691,7 +1720,9 @@ mod tests {
 
     #[test]
     fn test_header_from_bytes() {
-        let header_a = MdnsHeader {
+        // Validate that an mDNS header can be converted to bytes and then
+        // converted back into an mDNS header:
+        let header_a: MdnsHeader = MdnsHeader {
             id: 1234,
             flags: MdnsFlags::from_bytes([0x84, 0x21]),
             total_question_records: 10,
@@ -1699,41 +1730,56 @@ mod tests {
             total_authority_records: 12,
             total_additional_records: 13,
         };
-        let header_b = MdnsHeader::from_bytes(
+        let mut offset: usize = 0;
+        let header_b: MdnsHeader = MdnsHeader::from_bytes(
             &header_a.to_bytes(),
-            &mut 0,
-        ).unwrap();
+            &mut offset,
+        ).expect("Failed to convert `header_a` into `header_b`");
         assert_eq!(header_a, header_b);
+
+        // We should check that the offset is correct. mDNS headers are always
+        // 12 bytes so this should be easy:
+        assert_eq!(offset, 12);
     }
 
     #[test]
     fn test_query_from_bytes() {
-        let query_a = Query::new(
+        // Validate that an mDNS query can be converted to bytes, then converted
+        // back into an mDNS query:
+        let query_a: Query = Query::new(
             DnsName::from_name("test_service._http._tcp.local.").unwrap(),
             DnsType::PTR,
             DnsClass::IN,
         );
-        let query_b = Query::from_bytes(
-            &query_a.to_bytes(),
-            &mut 0,
+        let query_a_bytes: Vec<u8> = query_a.to_bytes();
+        let mut offset: usize = 0;
+        let query_b: Query = Query::from_bytes(
+            &query_a_bytes,
+            &mut offset,
         ).expect("Failed to convert `query_a` to `query_b`");
         assert_eq!(query_a, query_b);
+        assert_eq!(offset, query_a_bytes.len());
     }
 
     #[test]
     fn test_response_from_bytes() {
-        let response_a = Response::new(
+        // Validate that an mDNS response can be converted to bytes, then
+        // converted back into an mDNS response:
+        let response_a: Response = Response::new(
             DnsName::from_name("test_service._http._tcp.local.").unwrap(),
             DnsType::PTR,
             DnsClass::IN,
             120,
             vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
         );
-        let response_b = Response::from_bytes(
-            &response_a.to_bytes(),
-            &mut 0,
+        let response_a_bytes: Vec<u8> = response_a.to_bytes();
+        let mut offset: usize = 0;
+        let response_b: Response = Response::from_bytes(
+            &response_a_bytes,
+            &mut offset,
         ).expect("Failed to convert `response_a` to `response_b`");
         assert_eq!(response_a, response_b);
+        assert_eq!(offset, response_a_bytes.len());
     }
 
     #[test]
