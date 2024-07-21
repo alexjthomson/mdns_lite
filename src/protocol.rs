@@ -5,6 +5,8 @@
 
 use thiserror::Error;
 
+use crate::{MdnsServiceError, TxtRecords};
+
 /// Describes the `OPCODE` field in [`MdnsFlags`].
 /// 
 /// This field indicates the kind of query contained within an [`MdnsPacket`].
@@ -629,7 +631,7 @@ pub enum DnsNameError {
 }
 
 /// Represents a DNS name with its labels.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct DnsName {
     /// Labels that make up the [`DnsName`].
     labels: Vec<String>,
@@ -1056,6 +1058,26 @@ impl Response {
         }
     }
 
+    /// Creates a new TXT mDNS [`Response`].
+    /// 
+    /// TXT mDNS responses contain additional information about the service in
+    /// key-value pairs. For example: `MyDevice._http._tcp.local.` might contain
+    /// information like `path=/index.html`.
+    pub fn new_txt(
+        name: DnsName,
+        ttl: u32,
+        txt_records: &TxtRecords,
+    ) -> Result<Self, MdnsServiceError> {
+        let data: Vec<u8> = txt_records.to_wire_format()?;
+        Ok(Self {
+            name,
+            response_type: DnsType::TXT,
+            response_class: DnsClass::IN,
+            ttl,
+            data,
+        })
+    }
+
     /// Returns the name associated with this response.
     #[inline]
     #[must_use]
@@ -1276,11 +1298,25 @@ impl MdnsPacket {
         &self.question_records
     }
 
+    /// Returns `true` if the [`MdnsPacket`] contains any questions.
+    #[inline]
+    #[must_use]
+    pub fn has_questions(&self) -> bool {
+        !self.question_records.is_empty()
+    }
+
     /// Returns an immutable reference to the answers within the [`MdnsPacket`].
     #[inline]
     #[must_use]
     pub fn answers(&self) -> &Vec<Response> {
         &self.answer_records
+    }
+
+    /// Returns `true` if the [`MdnsPacket`] contains any answers.
+    #[inline]
+    #[must_use]
+    pub fn has_answers(&self) -> bool {
+        !self.answer_records.is_empty()
     }
 
     /// Returns an immutable reference to the authorities within the
@@ -1291,12 +1327,26 @@ impl MdnsPacket {
         &self.authority_records
     }
 
+    /// Returns `true` if the [`MdnsPacket`] contains any authority records.
+    #[inline]
+    #[must_use]
+    pub fn has_authorities(&self) -> bool {
+        !self.authority_records.is_empty()
+    }
+
     /// Returns an immutable reference to the additional records within the
     /// [`MdnsPacket`].
     #[inline]
     #[must_use]
     pub fn additionals(&self) -> &Vec<Response> {
         &self.additional_records
+    }
+
+    /// Returns `true` if the [`MdnsPacket`] contains any additional records.
+    #[inline]
+    #[must_use]
+    pub fn has_additionals(&self) -> bool {
+        !self.additional_records.is_empty()
     }
 
     /// Adds a new question to the [`MdnsPacket`] and updates the header.

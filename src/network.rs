@@ -3,31 +3,27 @@
 //! management and network interface configuration.
 
 use std::{
-    net::{
+    collections::HashMap, net::{
         IpAddr,
         Ipv4Addr,
         Ipv6Addr,
         SocketAddr,
         SocketAddrV4,
         SocketAddrV6,
-    },
-    ops::Sub,
-    sync::{
+    }, ops::Sub, sync::{
         atomic::{
             AtomicBool,
             Ordering,
         },
         Arc,
         Mutex,
-    },
-    thread::{
+    }, thread::{
         self,
         JoinHandle,
-    },
-    time::{
+    }, time::{
         Duration,
         Instant,
-    },
+    }
 };
 
 use mio::{
@@ -38,17 +34,14 @@ use mio::{
     Poll,
     Token,
 };
+use thiserror::Error;
 
 use crate::{
-    MdnsPacket,
-    MdnsService,
-    MdnsServiceError,
-    TxtRecords,
+    DnsName, DnsType, MdnsPacket, MdnsService, MdnsServiceError, Query, Response, TxtRecords
 };
 
-/// Convenience type for a thread-safe [`Vec<MdnsService>`].
-pub type MdnsServices = Arc<Mutex<Vec<MdnsService>>>;
-
+/// Convenience type for a thread-safe set of [`MdnsService`]s.
+pub type MdnsServices = Arc<Mutex<HashMap<DnsName, MdnsService>>>;
 /// Listens for mDNS packets.
 pub struct MdnsListener {
     poll: Poll,
@@ -71,6 +64,9 @@ impl MdnsListener {
     /// Number of bytes in the [`Self::buffer`].
     const RECEIVE_BUFFER_SIZE: usize = 512;
 
+    /// Timeout used when polling [`Self::poll`].
+    const POLL_TIMEOUT: Option<Duration> = Some(Duration::from_millis(500));
+
     /// Creates a new [`MdnsListener`].
     pub fn new(socket_ipv4: &mut UdpSocket, socket_ipv6: &mut UdpSocket) -> Result<Self, std::io::Error> {
         let poll = Poll::new()?;
@@ -91,27 +87,21 @@ impl MdnsListener {
 
     /// Ticks the [`MdnsListener`].
     /// 
-    /// This function parses mDNS packets received over the network and executes
-    /// the specified function.
-    /// network.
+    /// This function parses mDNS packets received and returns them along with
+    /// the address they were received from.
     /// 
-    /// This function requires two functions:
-    /// - `receive`: This function should return the number of bytes read, and
-    ///   the address they were read from; otherwise it should return a
-    ///   [`std::io::Error`].
-    /// - `respond`: This function should process a given [`MdnsPacket`]. This
-    ///   is where responses should be constructed and returned; otherwise the
-    ///   function should return an [`std::io::Error`].
-    pub fn tick<F1, F2>(&mut self, receive: F1, mut respond: F2) -> Result<Vec<MdnsPacket>, std::io::Error>
+    /// This function requires a receive function. This function should return
+    /// the number of bytes read, and the address they were read from; otherwise
+    /// it should return an [`std::io::Error`].
+    pub fn tick<R>(&mut self, receive: R) -> Result<Vec<(SocketAddr, MdnsPacket)>, std::io::Error>
     where
-        F1: Fn(&Event, &mut [u8]) -> Result<(usize, SocketAddr), std::io::Error>,
-        F2: FnMut(MdnsPacket, SocketAddr) -> Result<Option<MdnsPacket>, std::io::Error>,
+        R: Fn(&Event, &mut [u8]) -> Result<(usize, SocketAddr), std::io::Error>,
     {
         // Poll for events:
-        self.poll.poll(&mut self.events, None)?;
+        self.poll.poll(&mut self.events, Self::POLL_TIMEOUT)?;
         
         // Create a vector for containing each of the response packets:
-        let mut responses: Vec<MdnsPacket> = Vec::new();
+        let mut packets: Vec<(SocketAddr, MdnsPacket)> = Vec::new();
 
         // Iterate each of the events and try parse the mDNS packets:
         for event in self.events.iter() {
@@ -121,25 +111,20 @@ impl MdnsListener {
 
             // Try to parse the packet into an mDNS packet:
             match MdnsPacket::from_bytes(packet, &mut 0) {
-                Ok(packet) => {
-                    // The packet was successfully parsed and needs processing:
-                    match respond(packet, src) {
-                        Ok(response) => {
-                            if let Some(response) = response {
-                                responses.push(response);
-                            }
-                        }
-                        Err(error) => {
-                            log::error!("Failed to respond to mDNS packet: {error}");
-                        }
-                    }
-                },
+                Ok(packet) => packets.push((src, packet)),
                 Err(error) => log::error!("Received bad mDNS packet: {error}"),
             }
         }
         // Return the responses:
-        Ok(responses)
+        Ok(packets)
     }
+}
+
+/// Describes errors that can occur while answering an mDNS query.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Error, Debug)]
+pub enum MdnsAnswerError {
+    #[error("Unknown mDNS query type: `{0}`.")]
+    UnknownQueryType(u16),
 }
 
 /// Internal mDNS broadcaster.
@@ -288,34 +273,103 @@ impl MdnsBroadcasterInternal {
     /// Listens and responds to mDNS packets with questions about services
     /// registered within this [`MdnsBroadcasterInternal`].
     fn listen(&mut self) -> Result<(), std::io::Error> {
-        // Tick the listener:
-        let responses = self.listener.tick(
+        // Tick the mDNS listener for mDNS packets:
+        let packets = self.listener.tick(
             |event, buffer| {
                 match event.token() {
                     MdnsListener::IPV4_POLL_TOKEN => self.socket_ipv4.recv_from(buffer),
                     MdnsListener::IPV6_POLL_TOKEN => self.socket_ipv6.recv_from(buffer),
                     _ => unreachable!(),
                 }
-            },
-            |packet, _src| {
-                let mut answers = Vec::new();
-
-                // TODO: Populate answers here
-
-                if !answers.is_empty() {
-                    Ok(Some(MdnsPacket::new_response(
-                        packet.transaction_id(),
-                        answers,
-                        Vec::new(),
-                        Vec::new(),
-                    )))
-                } else {
-                    Ok(None)
-                }
-            },
+            }
         )?;
-        for response in responses {
-            self.broadcast(response)?;
+
+        // Lock the mDNS services:
+        let services = self.services.lock().unwrap();
+
+        // Iterate each mDNS packet:
+        for (src, packet) in packets {
+            // Check if the packet contains any questions:
+            if !packet.has_questions() {
+                continue;
+            }
+
+            // Respond to each question in the packet:
+            let questions = packet.questions();
+            let mut answers: Vec<Response> = Vec::with_capacity(questions.len());
+            for question in questions {
+                // TODO: This needs redoing:
+                // Questions may be asked about services; however, they may also
+                // be asked about:
+                // - The Host (this device). The question will contain the
+                //   hostname (hostname.local).
+                // - Service Types. For example, a PTR question could be asked
+                //   about `_http._tcp.local`. In this case, we should respond
+                //   with every service with that type.
+                //
+                // Currently this code only responds to questions about
+                // services, which is only part of responding to mDNS questions.
+                if let Some(service) = services.get(question.name()) {
+                    match question.query_type() {
+                        DnsType::A => {
+                            if let Some(ipv4_address) = &self.device_ipv4 {
+                                answers.push(
+                                    Response::new_a(
+                                        question.name().clone(),
+                                        self.ttl,
+                                        ipv4_address.clone(),
+                                    )
+                                );
+                            }
+                        },
+                        DnsType::AAAA => {
+                            if let Some(ipv6_address) = &self.device_ipv6 {
+                                answers.push(
+                                    Response::new_aaaa(
+                                        question.name().clone(),
+                                        self.ttl,
+                                        ipv6_address.clone(),
+                                    )
+                                );
+                            }
+                        },
+                        DnsType::TXT => {
+                            match Response::new_txt(
+                                question.name().clone(),
+                                self.ttl,
+                                service.records(),
+                            ) {
+                                Ok(response) => answers.push(response),
+                                Err(error) => log::error!(
+                                    "Failed to generate TXT response for service `{}`: {}",
+                                    question.name(),
+                                    error,
+                                ),
+                            }
+                        },
+                        DnsType::SRV => {
+                            // TODO: Respond with a hostname and port for the
+                            // service instance.
+                        },
+                        DnsType::ANY => {
+                            // TODO: Respond with all available information
+                            // about the service.
+                        },
+                        _ => continue,
+                    }
+                }
+            }
+
+            // Construct and broadcast the response packet:
+            let response = MdnsPacket::new_response(
+                packet.transaction_id(),
+                answers,
+                Vec::new(),
+                Vec::new(),
+            );
+            if let Err(error) = self.broadcast(response) {
+                log::error!("Failed to broadcast mDNS response: {error}");
+            }
         }
         Ok(())
     }
@@ -327,7 +381,7 @@ impl MdnsBroadcasterInternal {
         if self.last_broadcast.elapsed() > self.broadcast_interval {
             let services = self.services.lock().unwrap();
             self.last_broadcast = Instant::now();
-            for service in services.iter() {
+            for service in services.values() {
                 self.broadcast_service(service)?;
             }
         }
@@ -385,7 +439,14 @@ impl MdnsBroadcaster {
         broadcast_interval: u32,
     ) -> Self {
         Self {
-            services: Arc::new(Mutex::new(services)),
+            services: Arc::new(
+                Mutex::new(
+                    services
+                        .into_iter()
+                        .map(|service| (service.service_name(), service))
+                        .collect()
+                )
+            ),
             broadcast_interval: broadcast_interval.max(1000),
             handle: None,
             stop_flag: Arc::new(AtomicBool::new(false)),
@@ -433,7 +494,7 @@ impl MdnsBroadcaster {
         service: MdnsService,
     ) {
         let mut services = self.services.lock().unwrap();
-        services.push(service);
+        services.insert(service.service_name(), service);
     }
 
     /// Starts the [`MdnsBroadcaster`].

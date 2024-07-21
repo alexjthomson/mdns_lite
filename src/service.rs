@@ -194,6 +194,8 @@ impl TxtRecords {
         }
         Ok(bytes)
     }
+
+    // TODO: Add `from_wire_format`.
 }
 
 /// A service that can be advertised via mDNS.
