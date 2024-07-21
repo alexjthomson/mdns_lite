@@ -10,5 +10,9 @@ for a central DNS server.
 - Support for adding TXT records with service metadata.
 
 ## Todo
+- [ ] Add additional unit tests to `protocol.rs` to validate that errors are
+  returned when they are expected to.
+- [ ] Update the rust-docs with links so where in the mDNS specification various
+  constants and definitions are defined.
 - [x] Fix unit tests in `protocol.rs` not passing.
 - [x] Create unit tests for `MdnsPacket::from_bytes`.

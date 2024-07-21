@@ -94,36 +94,73 @@ impl MdnsListener {
     /// This function parses mDNS packets received over the network and executes
     /// the specified function.
     /// network.
-    pub fn tick<R, P>(&mut self, receive: R, mut process: P) -> Result<(), std::io::Error>
+    /// 
+    /// This function requires two functions:
+    /// - `receive`: This function should return the number of bytes read, and
+    ///   the address they were read from; otherwise it should return a
+    ///   [`std::io::Error`].
+    /// - `respond`: This function should process a given [`MdnsPacket`]. This
+    ///   is where responses should be constructed and returned; otherwise the
+    ///   function should return an [`std::io::Error`].
+    pub fn tick<F1, F2>(&mut self, receive: F1, mut respond: F2) -> Result<Vec<MdnsPacket>, std::io::Error>
     where
-        R: Fn(&Event, &mut [u8]) -> Result<(usize, SocketAddr), std::io::Error>,
-        P: FnMut(MdnsPacket, SocketAddr) -> Result<(), std::io::Error>,
+        F1: Fn(&Event, &mut [u8]) -> Result<(usize, SocketAddr), std::io::Error>,
+        F2: FnMut(MdnsPacket, SocketAddr) -> Result<Option<MdnsPacket>, std::io::Error>,
     {
+        // Poll for events:
         self.poll.poll(&mut self.events, None)?;
+        
+        // Create a vector for containing each of the response packets:
+        let mut responses: Vec<MdnsPacket> = Vec::new();
+
+        // Iterate each of the events and try parse the mDNS packets:
         for event in self.events.iter() {
+            // Receive the raw packet bytes:
             let (received_bytes, src) = receive(event, &mut self.buffer)?;
-            let packet = &self.buffer[..received_bytes];
+            let packet: &[u8] = &self.buffer[..received_bytes];
+
+            // Try to parse the packet into an mDNS packet:
             match MdnsPacket::from_bytes(packet, &mut 0) {
                 Ok(packet) => {
-                    if let Err(error) = process(packet, src) {
-                        log::error!("Failed to process mDNS packet: {error}");
+                    // The packet was successfully parsed and needs processing:
+                    match respond(packet, src) {
+                        Ok(response) => {
+                            if let Some(response) = response {
+                                responses.push(response);
+                            }
+                        }
+                        Err(error) => {
+                            log::error!("Failed to respond to mDNS packet: {error}");
+                        }
                     }
                 },
-                Err(error) => log::error!("Failed to parse mDNS packet: {error}"),
+                Err(error) => log::error!("Received bad mDNS packet: {error}"),
             }
         }
-        Ok(())
+        // Return the responses:
+        Ok(responses)
     }
 }
 
 /// Internal mDNS broadcaster.
 /// 
+/// This type contains all of the data for [`MdnsBroadcaster`]. The intention is
+/// to allow this data to be accessed across multiple threads safely.
+/// 
 /// This is created by [`MdnsBroadcaster`] and is run on its own thread.
 struct MdnsBroadcasterInternal {
+    /// Contains each of the [`MdnsService`]s registered for the parent
+    /// [`MdnsBroadcaster`].
     services: MdnsServices,
+    /// Optional IPv4 address of the device that the [`MdnsBroadcaster`] is
+    /// running on.
     device_ipv4: Option<Vec<u8>>,
+    /// Optional IPv6 address of the device that the [`MdnsBroadcaster`] is
+    /// running on.
     device_ipv6: Option<Vec<u8>>,
+    /// IPv4 mDNS [`UdpSocket`].
     socket_ipv4: UdpSocket,
+    /// IPv6 mDNS [`UdpSocket`].
     socket_ipv6: UdpSocket,
     /// Time-to-live for mDNS packets.
     ttl: u32,
@@ -221,6 +258,8 @@ impl MdnsBroadcasterInternal {
     }
 
     /// Broadcasts an [`MdnsPacket`].
+    /// 
+    /// This function will broadcast the `packet` to both IPv4 and IPv6 mDNS.
     pub fn broadcast(&self, packet: MdnsPacket) -> Result<(), std::io::Error> {
         let packet = packet.to_bytes();
         self.socket_ipv4.send_to(
@@ -235,15 +274,22 @@ impl MdnsBroadcasterInternal {
     }
 
     /// Ticks the [`MdnsBroadcasterInternal`].
+    /// 
+    /// This should be called as often as possible.
+    /// 
+    /// This function ticks the mDNS packet listener and mDNS service
+    /// announcement functionality of the [`MdnsBroadcasterInternal`].
     pub fn tick(&mut self) -> Result<(), std::io::Error> {
         self.listen()?;
         self.broadcast_services()?;
         Ok(())
     }
 
+    /// Listens and responds to mDNS packets with questions about services
+    /// registered within this [`MdnsBroadcasterInternal`].
     fn listen(&mut self) -> Result<(), std::io::Error> {
-        let mut responses = Vec::new();
-        self.listener.tick(
+        // Tick the listener:
+        let responses = self.listener.tick(
             |event, buffer| {
                 match event.token() {
                     MdnsListener::IPV4_POLL_TOKEN => self.socket_ipv4.recv_from(buffer),
@@ -257,14 +303,15 @@ impl MdnsBroadcasterInternal {
                 // TODO: Populate answers here
 
                 if !answers.is_empty() {
-                    responses.push(MdnsPacket::new_response(
+                    Ok(Some(MdnsPacket::new_response(
                         packet.transaction_id(),
                         answers,
                         Vec::new(),
                         Vec::new(),
-                    ));
+                    )))
+                } else {
+                    Ok(None)
                 }
-                Ok(())
             },
         )?;
         for response in responses {
