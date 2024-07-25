@@ -1,6 +1,6 @@
 use super::{
-    opcode::MdnsOpcode,
-    rcode::MdnsRcode,
+    MdnsOpcode,
+    MdnsRcode,
 };
 
 /// Represents the flags in an [`MdnsHeader`].
@@ -92,24 +92,13 @@ impl MdnsFlags {
     #[inline]
     #[must_use]
     pub fn opcode(&self) -> MdnsOpcode {
-        match (self.0 & Self::OPCODE_MASK) >> 11 {
-            0 => MdnsOpcode::Query,
-            1 => MdnsOpcode::IQuery,
-            2 => MdnsOpcode::Status,
-            unknown => MdnsOpcode::Unknown(unknown as u8),
-        }
+        MdnsOpcode::from(((self.0 & Self::OPCODE_MASK) >> 11) as u8)
     }
 
     /// Sets the OPCODE field.
     #[inline]
     pub fn set_opcode(&mut self, opcode: MdnsOpcode) {
-        let opcode: u16 = match opcode {
-            MdnsOpcode::Query => 0,
-            MdnsOpcode::IQuery => 1,
-            MdnsOpcode::Status => 2,
-            MdnsOpcode::Unknown(other) => other as u16,
-        };
-        self.0 = (self.0 & !Self::OPCODE_MASK) | ((opcode & 0x0f) << 11);
+        self.0 = (self.0 & !Self::OPCODE_MASK) | ((u8::from(opcode) as u16 & 0x0f) << 11);
     }
 
     /// Gets the AA (Authoritative Answer) bit.
@@ -187,30 +176,14 @@ impl MdnsFlags {
 
     /// Gets the RCODE (Response Code) field.
     #[inline]
+    #[must_use]
     pub fn rcode(&self) -> MdnsRcode {
-        match self.0 & Self::RCODE_MASK {
-            0 => MdnsRcode::NoError,
-            1 => MdnsRcode::FormatError,
-            2 => MdnsRcode::ServerFailure,
-            3 => MdnsRcode::NameError,
-            4 => MdnsRcode::NotImplemented,
-            5 => MdnsRcode::Refused,
-            unknown => MdnsRcode::Unknown(unknown as u8),
-        }
+        MdnsRcode::from((self.0 & Self::RCODE_MASK) as u8)
     }
 
     /// Sets the RCODE (Response Code) field.
     pub fn set_rcode(&mut self, rcode: MdnsRcode) {
-        let rcode = match rcode {
-            MdnsRcode::NoError => 0,
-            MdnsRcode::FormatError => 1,
-            MdnsRcode::ServerFailure => 2,
-            MdnsRcode::NameError => 3,
-            MdnsRcode::NotImplemented => 4,
-            MdnsRcode::Refused => 5,
-            MdnsRcode::Unknown(value) => value,
-        };
-        self.0 = (self.0 & !Self::RCODE_MASK) | (rcode as u16);
+        self.0 = (self.0 & !Self::RCODE_MASK) | (u8::from(rcode) as u16);
     }
 }
 

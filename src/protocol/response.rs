@@ -65,7 +65,10 @@ impl MdnsResponse {
 
         // The first part of a response packet is the name. The name uses wire
         // formatting. This should be read first:
-        let name: MdnsName = MdnsName::from_wire_format(bytes, &mut i)?;
+        let name: MdnsName = match MdnsName::from_wire_format(bytes, &mut i) {
+            Ok(name) => name,
+            Err(error) => return Err(MdnsParseError::NameError(error)),
+        };
 
         // After the name, 10 bytes of information is expected:
         // - `response_type` (2 bytes)

@@ -33,9 +33,49 @@ pub enum MdnsOpcode {
     Unknown(u8),
 }
 
+impl From<u8> for MdnsOpcode {
+    #[inline]
+    #[must_use]
+    fn from(opcode_id: u8) -> Self {
+        match opcode_id {
+            0 => Self::Query,
+            1 => Self::IQuery,
+            2 => Self::Status,
+            unknown => Self::Unknown(unknown),
+        }
+    }
+}
+
+impl From<MdnsOpcode> for u8 {
+    #[inline]
+    #[must_use]
+    fn from(opcode: MdnsOpcode) -> Self {
+        match opcode {
+            MdnsOpcode::Query => 0,
+            MdnsOpcode::IQuery => 1,
+            MdnsOpcode::Status => 2,
+            MdnsOpcode::Unknown(unknown) => unknown,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // TODO: Add unit tests.
+    #[test]
+    fn test_opcode_from_u16() {
+        assert_eq!(MdnsOpcode::from(0x00), MdnsOpcode::Query);
+        assert_eq!(MdnsOpcode::from(0x01), MdnsOpcode::IQuery);
+        assert_eq!(MdnsOpcode::from(0x02), MdnsOpcode::Status);
+        assert_eq!(MdnsOpcode::from(0xff), MdnsOpcode::Unknown(0xff));
+    }
+
+    #[test]
+    fn test_u16_from_opcode() {
+        assert_eq!(u8::from(MdnsOpcode::Query), 0x00);
+        assert_eq!(u8::from(MdnsOpcode::IQuery), 0x01);
+        assert_eq!(u8::from(MdnsOpcode::Status), 0x02);
+        assert_eq!(u8::from(MdnsOpcode::Unknown(0xff)), 0xff);
+    }
 }

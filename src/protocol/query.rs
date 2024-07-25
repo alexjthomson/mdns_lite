@@ -49,7 +49,10 @@ impl MdnsQuery {
         let mut i: usize = *offset;
 
         // Get the query name:
-        let name = MdnsName::from_wire_format(bytes, &mut i)?;
+        let name: MdnsName = match MdnsName::from_wire_format(bytes, &mut i) {
+            Ok(name) => name,
+            Err(error) => return Err(MdnsParseError::NameError(error)),
+        };
 
         // Get the query type and query class:
         if bytes.len() - i < 4 {

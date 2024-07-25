@@ -17,7 +17,10 @@ pub mod r#type;
 pub use class::MdnsClass;
 pub use flags::MdnsFlags;
 pub use header::MdnsHeader;
-pub use name::MdnsName;
+pub use name::{
+    MdnsName,
+    MdnsNameError,
+};
 pub use opcode::MdnsOpcode;
 pub use packet::MdnsPacket;
 pub use query::MdnsQuery;
@@ -39,22 +42,6 @@ pub enum MdnsParseError {
     #[error("An mDNS response is malformed.
     There are not enough bytes to contain the remainder of the response after the name.")]
     MalformedResponse,
-    #[error("Label length exceeds data length `{length}` (maximum_length: `{max_length}`).")]
-    InvalidLabelLength {
-        length: usize,
-        max_length: usize,
-    },
-    #[error("Label is not valid UTF-8.")]
-    InvalidUtf8Label,
-    #[error("Labels do not end with a zero byte.")]
-    InvalidEndOfLabels,
-}
-
-/// Error type for [`MdnsName`].
-#[derive(PartialEq, Eq, Debug, Error)]
-pub enum MdnsNameError {
-    #[error("DNS name must end with a `.`.")]
-    MustEndWithDot,
-    #[error("Each label must be 63 characters or less.")]
-    LabelTooLong,
+    #[error("Failed to parse mDNS name: {0}")]
+    NameError(MdnsNameError),
 }
