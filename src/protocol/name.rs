@@ -1,5 +1,5 @@
 use super::{
-    ParseMdnsError,
+    MdnsParseError,
     MdnsNameError
 };
 
@@ -60,7 +60,7 @@ impl MdnsName {
     }
 
     /// Create a [`MdnsName`] from wire format
-    pub fn from_wire_format(data: &[u8], offset: &mut usize) -> Result<Self, ParseMdnsError> {
+    pub fn from_wire_format(data: &[u8], offset: &mut usize) -> Result<Self, MdnsParseError> {
         let mut labels = Vec::new();
         let mut i: usize = *offset;
         while i < data.len() {
@@ -80,7 +80,7 @@ impl MdnsName {
             // We need to perform a range check to ensure that the `data` buffer
             // has enough space to contain the label:
             if i + len > data.len() {
-                return Err(ParseMdnsError::InvalidLabelLength {
+                return Err(MdnsParseError::InvalidLabelLength {
                     length: len,
                     max_length: data.len() - i,
                 });
@@ -89,7 +89,7 @@ impl MdnsName {
             // Read the label from the `data` buffer:
             let label = match std::str::from_utf8(&data[i..(i + len)]) {
                 Ok(label) => label.to_string(),
-                Err(_) => return Err(ParseMdnsError::InvalidUtf8Label),
+                Err(_) => return Err(MdnsParseError::InvalidUtf8Label),
             };
 
             // We can now push the constructed label to the `labels` vector:
@@ -99,7 +99,7 @@ impl MdnsName {
             i += len;
         }
         if i == data.len() || data[i] != 0 {
-            return Err(ParseMdnsError::InvalidEndOfLabels);
+            return Err(MdnsParseError::InvalidEndOfLabels);
         }
         *offset = i + 1;
         Ok(MdnsName { labels })
@@ -201,6 +201,6 @@ mod tests {
             5, b'l', b'o', b'c', b'a', b'l',
         ];
         let err = MdnsName::from_wire_format(&wire_format, &mut 0).unwrap_err();
-        assert_eq!(err, ParseMdnsError::InvalidEndOfLabels);
+        assert_eq!(err, MdnsParseError::InvalidEndOfLabels);
     }
 }

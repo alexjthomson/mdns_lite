@@ -29,7 +29,7 @@ use thiserror::Error;
 
 /// Describes various errors that could happen while parsing an mDNS packet.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Error, Debug)]
-pub enum ParseMdnsError {
+pub enum MdnsParseError {
     #[error("The mDNS header is too small.
     mDNS headers are exactly 12 bytes.")]
     HeaderTooSmall,

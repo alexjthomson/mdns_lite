@@ -2,7 +2,7 @@ use super::{
     MdnsClass,
     MdnsName,
     MdnsType,
-    ParseMdnsError,
+    MdnsParseError,
 };
 
 use crate::service::{
@@ -53,7 +53,7 @@ impl MdnsResponse {
     pub fn from_bytes(
         bytes: &[u8],
         offset: &mut usize,
-    ) -> Result<Self, ParseMdnsError> {
+    ) -> Result<Self, MdnsParseError> {
         // Create a counter to track the new offset. This will become the new
         // offset when the function finishes. The reason a second counter is
         // used is to make this function act "transactionally". For example, if
@@ -76,7 +76,7 @@ impl MdnsResponse {
         // This totals 10 bytes of data. We should first validate that there are
         // 10 bytes of data available to be read:
         if bytes.len() - i < 10 {
-            return Err(ParseMdnsError::MalformedResponse);
+            return Err(MdnsParseError::MalformedResponse);
         }
         // We can now read the bytes and apply the offset:
         // TODO: This can be performed using `unchecked` functions since we have
@@ -93,7 +93,7 @@ impl MdnsResponse {
             // There is a data payload; therefore, we should check that
             // `data_length` bytes exist:
             if bytes.len() - i < data_length {
-                return Err(ParseMdnsError::MalformedResponse);
+                return Err(MdnsParseError::MalformedResponse);
             }
             // We can now read the bytes and apply the offset:
             let data: Vec<u8> = bytes[i..(i+data_length)].to_vec();

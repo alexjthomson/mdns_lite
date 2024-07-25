@@ -4,7 +4,7 @@ use super::{
     MdnsQuery,
     MdnsResponse,
     MdnsOpcode,
-    ParseMdnsError,
+    MdnsParseError,
 };
 
 /// Represents an mDNS packet.
@@ -310,7 +310,7 @@ impl MdnsPacket {
     pub fn from_bytes(
         bytes: &[u8],
         offset: &mut usize,
-    ) -> Result<Self, ParseMdnsError> {
+    ) -> Result<Self, MdnsParseError> {
         let mut i: usize = *offset;
 
         // The first thing we need to read from the mDNS packet is the header:
@@ -320,7 +320,7 @@ impl MdnsPacket {
             bytes: &[u8],
             offset: &mut usize,
             total_queries: u16,
-        ) -> Result<Vec<MdnsQuery>, ParseMdnsError> {
+        ) -> Result<Vec<MdnsQuery>, MdnsParseError> {
             let mut queries = Vec::with_capacity(total_queries as usize);
             for _ in 0..total_queries {
                 queries.push(MdnsQuery::from_bytes(bytes, offset)?);
@@ -332,7 +332,7 @@ impl MdnsPacket {
             bytes: &[u8],
             offset: &mut usize,
             total_responses: u16,
-        ) -> Result<Vec<MdnsResponse>, ParseMdnsError> {
+        ) -> Result<Vec<MdnsResponse>, MdnsParseError> {
             let mut responses = Vec::with_capacity(total_responses as usize);
             for _ in 0..total_responses {
                 responses.push(MdnsResponse::from_bytes(bytes, offset)?);

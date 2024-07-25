@@ -2,7 +2,7 @@ use super::{
     MdnsClass,
     MdnsName,
     MdnsType,
-    ParseMdnsError,
+    MdnsParseError,
 };
 
 /// Represents an mDNS query.
@@ -45,7 +45,7 @@ impl MdnsQuery {
     pub fn from_bytes(
         bytes: &[u8],
         offset: &mut usize,
-    ) -> Result<Self, ParseMdnsError> {
+    ) -> Result<Self, MdnsParseError> {
         let mut i: usize = *offset;
 
         // Get the query name:
@@ -53,7 +53,7 @@ impl MdnsQuery {
 
         // Get the query type and query class:
         if bytes.len() - i < 4 {
-            return Err(ParseMdnsError::MalformedQuery);
+            return Err(MdnsParseError::MalformedQuery);
         }
         let query_type = u16::from_be_bytes([bytes[i], bytes[i + 1]]).into();
         let query_class = u16::from_be_bytes([bytes[i + 2], bytes[i + 3]]).into();

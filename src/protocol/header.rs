@@ -1,6 +1,6 @@
 use super::{
     flags::MdnsFlags,
-    ParseMdnsError,
+    MdnsParseError,
 };
 
 /// Represents the header of an [`MdnsPacket`].
@@ -233,11 +233,11 @@ impl MdnsHeader {
     }
 
     /// Parses an mDNS header from bytes to an [`MdnsHeader`] instance.
-    pub fn from_bytes(bytes: &[u8], offset: &mut usize) -> Result<Self, ParseMdnsError> {
+    pub fn from_bytes(bytes: &[u8], offset: &mut usize) -> Result<Self, MdnsParseError> {
         // Get the mDNS header bytes from the `bytes` slice passed into the
         // function:
         if bytes.len() - *offset < Self::MDNS_HEADER_SIZE {
-            return Err(ParseMdnsError::HeaderTooSmall);
+            return Err(MdnsParseError::HeaderTooSmall);
         }
         let header: &[u8; Self::MDNS_HEADER_SIZE] = &bytes[*offset..(*offset + Self::MDNS_HEADER_SIZE)]
             .try_into()
