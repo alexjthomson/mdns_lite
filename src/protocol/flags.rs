@@ -7,7 +7,7 @@ use super::{
 /// 
 /// This struct allows structured access to the individual bits and sub-fields
 /// within the 16-bit flags field.
-#[derive(Clone, Copy, PartialEq, Default, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Default, Debug)]
 pub struct MdnsFlags(u16);
 
 impl MdnsFlags {

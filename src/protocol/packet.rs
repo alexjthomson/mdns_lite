@@ -8,7 +8,7 @@ use super::{
 };
 
 /// Represents an mDNS packet.
-#[derive(PartialEq, Debug)]
+#[derive(Clone, PartialEq, Hash, Default, Debug)]
 pub struct MdnsPacket {
     /// Header for the [`MdnsPacket`].
     header: MdnsHeader,

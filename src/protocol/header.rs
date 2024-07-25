@@ -22,7 +22,7 @@ use super::{
 /// | ARCOUNT | 16          | Number of entries in the additional records section.   |
 /// 
 /// The total size of an mDNS header is 12 bytes.
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Default, Debug)]
 pub struct MdnsHeader {
     /// Transaction ID of the packet.
     /// 

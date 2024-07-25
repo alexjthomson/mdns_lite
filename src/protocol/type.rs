@@ -2,7 +2,7 @@
 /// 
 /// This represents the type of record being queries or responded to. Each
 /// variant corresponds to a specific type of DNS record.
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum MdnsType {
     /// IPv4 record (A).
     /// 

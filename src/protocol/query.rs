@@ -9,7 +9,7 @@ use super::{
 /// 
 /// mDNS (Multicast DNS) queries are used to discover services and devices on a
 /// local network. This struct encapsulates a single mDNS query.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct MdnsQuery {
     /// The name being queried.
     /// 

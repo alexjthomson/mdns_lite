@@ -11,7 +11,7 @@ use crate::service::{
 };
 
 /// Represents an mDNS response.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct MdnsResponse {
     /// The name associated with this response.
     name: MdnsName,

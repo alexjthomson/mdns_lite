@@ -3,7 +3,7 @@
 /// This field indicates the kind of query contained within an
 /// [`MdnsPacket`](super::MdnsPacket). Values are defined according to the DNS
 /// protocol specifications.
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum MdnsOpcode {
     /// Standard query (QUERY).
     /// 

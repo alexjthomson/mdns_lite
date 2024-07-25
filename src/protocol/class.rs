@@ -1,9 +1,13 @@
-/// Represents the DNS classes in mDNS.
-#[derive(Clone, Copy, PartialEq, Debug)]
+/// Represents mDNS classes.
+/// 
+/// mDNS shares the classes available in the DNS protocol and defines one
+/// additional class unique to mDNS, the [`ANY`](MdnsClass::ANY) class.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Default, Debug)]
 pub enum MdnsClass {
     /// Internet (IN).
     /// 
     /// The standard Internet query class.
+    #[default]
     IN,
     /// Chaos (CH).
     /// 
