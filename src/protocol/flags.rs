@@ -66,13 +66,6 @@ impl MdnsFlags {
         Self(0)
     }
 
-    /// Converts raw `bytes` into [`MdnsFlags`].
-    #[inline]
-    #[must_use]
-    pub fn from_bytes(bytes: [u8; 2]) -> Self {
-        Self(u16::from_be_bytes(bytes))
-    }
-
     /// Gets the QR (Query/Response) bit.
     #[inline]
     #[must_use]
@@ -226,6 +219,14 @@ impl From<u16> for MdnsFlags {
     #[must_use]
     fn from(flags: u16) -> Self {
         Self(flags)
+    }
+}
+
+impl From<[u8; 2]> for MdnsFlags {
+    #[inline]
+    #[must_use]
+    fn from(slice: [u8; 2]) -> Self {
+        Self(u16::from_be_bytes(slice))
     }
 }
 

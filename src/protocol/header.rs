@@ -247,7 +247,7 @@ impl MdnsHeader {
         *offset += Self::MDNS_HEADER_SIZE;
         Ok(Self {
             id: u16::from_be_bytes([header[0], header[1]]),
-            flags: MdnsFlags::from_bytes([header[2], header[3]]),
+            flags: MdnsFlags::from([header[2], header[3]]),
             total_question_records: u16::from_be_bytes([header[4], header[5]]),
             total_answer_records: u16::from_be_bytes([header[6], header[7]]),
             total_authority_records: u16::from_be_bytes([header[8], header[9]]),
@@ -293,7 +293,7 @@ mod tests {
         // converted back into an mDNS header:
         let header_a: MdnsHeader = MdnsHeader {
             id: 1234,
-            flags: MdnsFlags::from_bytes([0x84, 0x21]),
+            flags: MdnsFlags::from(0x8421),
             total_question_records: 10,
             total_answer_records: 11,
             total_authority_records: 12,

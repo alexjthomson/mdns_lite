@@ -28,39 +28,26 @@ pub enum DnsClass {
 
 impl From<u16> for DnsClass {
     #[must_use]
-    fn from(id: u16) -> Self {
-        match id {
+    fn from(class_id: u16) -> Self {
+        match class_id {
             0x0001 => Self::IN,
             0x0003 => Self::CH,
             0x0004 => Self::HS,
             0x00ff => Self::ANY,
-            _ => Self::Unknown(id),
+            _ => Self::Unknown(class_id),
         }
     }
 }
 
 impl From<DnsClass> for u16 {
     #[must_use]
-    fn from(dns_class: DnsClass) -> Self {
-        match dns_class {
+    fn from(class: DnsClass) -> Self {
+        match class {
             DnsClass::IN  => 0x0001,
             DnsClass::CH  => 0x0003,
             DnsClass::HS  => 0x0004,
             DnsClass::ANY => 0x00ff,
             DnsClass::Unknown(id) => id,
-        }
-    }
-}
-
-impl From<DnsClass> for [u8; 2] {
-    #[must_use]
-    fn from(dns_class: DnsClass) -> Self {
-        match dns_class {
-            DnsClass::IN  => [0x00, 0x01],
-            DnsClass::CH  => [0x00, 0x03],
-            DnsClass::HS  => [0x00, 0x04],
-            DnsClass::ANY => [0x00, 0xff],
-            DnsClass::Unknown(id) => [(id >> 8) as u8, (id & 0xff) as u8],
         }
     }
 }
@@ -74,6 +61,19 @@ impl From<[u8; 2]> for DnsClass {
             [0x00, 0x04] => Self::HS,
             [0x00, 0xff] => Self::ANY,
             _ => Self::Unknown(u16::from_be_bytes(slice)),
+        }
+    }
+}
+
+impl From<DnsClass> for [u8; 2] {
+    #[must_use]
+    fn from(class: DnsClass) -> Self {
+        match class {
+            DnsClass::IN  => [0x00, 0x01],
+            DnsClass::CH  => [0x00, 0x03],
+            DnsClass::HS  => [0x00, 0x04],
+            DnsClass::ANY => [0x00, 0xff],
+            DnsClass::Unknown(id) => [(id >> 8) as u8, (id & 0xff) as u8],
         }
     }
 }
