@@ -82,13 +82,39 @@ impl From<[u8; 2]> for DnsClass {
 mod tests {
     use super::*;
 
-    // TODO: Achieve 100% test coverage.
+    #[test]
+    fn test_class_from_u16() {
+        assert_eq!(DnsClass::from(0x0001), DnsClass::IN);
+        assert_eq!(DnsClass::from(0x0003), DnsClass::CH);
+        assert_eq!(DnsClass::from(0x0004), DnsClass::HS);
+        assert_eq!(DnsClass::from(0x00ff), DnsClass::ANY);
+        assert_eq!(DnsClass::from(0x1234), DnsClass::Unknown(0x1234));
+    }
 
     #[test]
-    fn test_dns_class() {
-        assert_eq!(DnsClass::from(0x0001), DnsClass::IN);
+    fn test_u16_from_class() {
         assert_eq!(u16::from(DnsClass::IN), 0x0001);
-        assert_eq!(<[u8; 2]>::from(DnsClass::IN), [0x00, 0x01]);
+        assert_eq!(u16::from(DnsClass::CH), 0x0003);
+        assert_eq!(u16::from(DnsClass::HS), 0x0004);
+        assert_eq!(u16::from(DnsClass::ANY), 0x00ff);
+        assert_eq!(u16::from(DnsClass::Unknown(0x1234)), 0x1234);
+    }
+
+    #[test]
+    fn test_class_from_slice() {
         assert_eq!(DnsClass::from([0x00, 0x01]), DnsClass::IN);
+        assert_eq!(DnsClass::from([0x00, 0x03]), DnsClass::CH);
+        assert_eq!(DnsClass::from([0x00, 0x04]), DnsClass::HS);
+        assert_eq!(DnsClass::from([0x00, 0xff]), DnsClass::ANY);
+        assert_eq!(DnsClass::from([0x12, 0x34]), DnsClass::Unknown(0x1234));
+    }
+
+    #[test]
+    fn test_slice_from_class() {
+        assert_eq!(<[u8; 2]>::from(DnsClass::IN), [0x00, 0x01]);
+        assert_eq!(<[u8; 2]>::from(DnsClass::CH), [0x00, 0x03]);
+        assert_eq!(<[u8; 2]>::from(DnsClass::HS), [0x00, 0x04]);
+        assert_eq!(<[u8; 2]>::from(DnsClass::ANY), [0x00, 0xff]);
+        assert_eq!(<[u8; 2]>::from(DnsClass::Unknown(0x1234)), [0x12, 0x34]);
     }
 }
