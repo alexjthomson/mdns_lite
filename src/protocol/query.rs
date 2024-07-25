@@ -1,7 +1,7 @@
 use super::{
-    DnsClass,
-    DnsName,
-    DnsType,
+    MdnsClass,
+    MdnsName,
+    MdnsType,
     ParseMdnsError,
 };
 
@@ -10,38 +10,38 @@ use super::{
 /// mDNS (Multicast DNS) queries are used to discover services and devices on a
 /// local network. This struct encapsulates a single mDNS query.
 #[derive(Clone, PartialEq, Debug)]
-pub struct Query {
+pub struct MdnsQuery {
     /// The name being queried.
     /// 
     /// This is the domain name or service name that the query is trying to
     /// resolve. For example, in mDNS, it could be a service type like
     /// `_http._tcp.local`, or a specific instance of a service like
     /// `my_esp32._http._tcp.local`.
-    name: DnsName,
+    name: MdnsName,
     /// The type of the query.
     /// 
     /// This field specifies the type of DNS record being requested.
-    query_type: DnsType,
+    query_type: MdnsType,
     /// The class of the query.
     /// 
     /// Typically IN (Internet), which indicates the query is for Internet use.
     /// Other classes exist but are rarely used in common scenarios.
-    query_class: DnsClass,
+    query_class: MdnsClass,
 }
 
-impl Query {
-    /// Creates a new mDNS [`Query`].
+impl MdnsQuery {
+    /// Creates a new mDNS [`MdnsQuery`].
     #[inline]
     #[must_use]
     pub fn new(
-        name: DnsName,
-        query_type: DnsType,
-        query_class: DnsClass
+        name: MdnsName,
+        query_type: MdnsType,
+        query_class: MdnsClass
     ) -> Self {
         Self { name, query_type, query_class }
     }
 
-    /// Converts raw query bytes into a [`Query`] instance. 
+    /// Converts raw query bytes into a [`MdnsQuery`] instance. 
     pub fn from_bytes(
         bytes: &[u8],
         offset: &mut usize,
@@ -49,7 +49,7 @@ impl Query {
         let mut i: usize = *offset;
 
         // Get the query name:
-        let name = DnsName::from_wire_format(bytes, &mut i)?;
+        let name = MdnsName::from_wire_format(bytes, &mut i)?;
 
         // Get the query type and query class:
         if bytes.len() - i < 4 {
@@ -68,7 +68,7 @@ impl Query {
         })
     }
 
-    /// Converts the [`Query`] to raw bytes.
+    /// Converts the [`MdnsQuery`] to raw bytes.
     #[inline]
     #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -77,7 +77,7 @@ impl Query {
         buffer
     }
 
-    /// Extends the `buffer` with the raw bytes that form this [`Query`].
+    /// Extends the `buffer` with the raw bytes that form this [`MdnsQuery`].
     #[inline]
     pub fn to_bytes_extend(&self, buffer: &mut Vec<u8>) {
         buffer.extend_from_slice(&self.name.to_wire_format());
@@ -88,21 +88,21 @@ impl Query {
     /// Returns an immutable reference to the name being queried.
     #[inline]
     #[must_use]
-    pub fn name(&self) -> &DnsName {
+    pub fn name(&self) -> &MdnsName {
         &self.name
     }
 
-    /// Returns the query [`DnsType`].
+    /// Returns the query [`MdnsType`].
     #[inline]
     #[must_use]
-    pub fn query_type(&self) -> DnsType {
+    pub fn query_type(&self) -> MdnsType {
         self.query_type
     }
 
-    /// Returns the query [`DnsClass`].
+    /// Returns the query [`MdnsClass`].
     #[inline]
     #[must_use]
-    pub fn query_class(&self) -> DnsClass {
+    pub fn query_class(&self) -> MdnsClass {
         self.query_class
     }
 }
@@ -115,14 +115,14 @@ mod tests {
 
     #[test]
     fn test_query() {
-        let query = Query::new(
-            DnsName::from_name("my_sensor._http._tcp.local.").unwrap(),
-            DnsType::A,
-            DnsClass::IN,
+        let query = MdnsQuery::new(
+            MdnsName::from_name("my_sensor._http._tcp.local.").unwrap(),
+            MdnsType::A,
+            MdnsClass::IN,
         );
         assert_eq!(query.name().to_string(), "my_sensor._http._tcp.local.");
-        assert_eq!(query.query_type(), DnsType::A);
-        assert_eq!(query.query_class(), DnsClass::IN);
+        assert_eq!(query.query_type(), MdnsType::A);
+        assert_eq!(query.query_class(), MdnsClass::IN);
     }
 
     #[test]
@@ -130,14 +130,14 @@ mod tests {
         // TODO: Improve this test, perhaps split it into two different tests?
         // Validate that an mDNS query can be converted to bytes, then converted
         // back into an mDNS query:
-        let query_a: Query = Query::new(
-            DnsName::from_name("test_service._http._tcp.local.").unwrap(),
-            DnsType::PTR,
-            DnsClass::IN,
+        let query_a: MdnsQuery = MdnsQuery::new(
+            MdnsName::from_name("test_service._http._tcp.local.").unwrap(),
+            MdnsType::PTR,
+            MdnsClass::IN,
         );
         let query_a_bytes: Vec<u8> = query_a.to_bytes();
         let mut offset: usize = 0;
-        let query_b: Query = Query::from_bytes(
+        let query_b: MdnsQuery = MdnsQuery::from_bytes(
             &query_a_bytes,
             &mut offset,
         ).expect("Failed to convert `query_a` to `query_b`");

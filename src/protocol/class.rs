@@ -1,6 +1,6 @@
 /// Represents the DNS classes in mDNS.
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum DnsClass {
+pub enum MdnsClass {
     /// Internet (IN).
     /// 
     /// The standard Internet query class.
@@ -26,7 +26,7 @@ pub enum DnsClass {
     Unknown(u16),
 }
 
-impl From<u16> for DnsClass {
+impl From<u16> for MdnsClass {
     #[must_use]
     fn from(class_id: u16) -> Self {
         match class_id {
@@ -39,20 +39,20 @@ impl From<u16> for DnsClass {
     }
 }
 
-impl From<DnsClass> for u16 {
+impl From<MdnsClass> for u16 {
     #[must_use]
-    fn from(class: DnsClass) -> Self {
+    fn from(class: MdnsClass) -> Self {
         match class {
-            DnsClass::IN  => 0x0001,
-            DnsClass::CH  => 0x0003,
-            DnsClass::HS  => 0x0004,
-            DnsClass::ANY => 0x00ff,
-            DnsClass::Unknown(id) => id,
+            MdnsClass::IN  => 0x0001,
+            MdnsClass::CH  => 0x0003,
+            MdnsClass::HS  => 0x0004,
+            MdnsClass::ANY => 0x00ff,
+            MdnsClass::Unknown(id) => id,
         }
     }
 }
 
-impl From<[u8; 2]> for DnsClass {
+impl From<[u8; 2]> for MdnsClass {
     #[must_use]
     fn from(slice: [u8; 2]) -> Self {
         match slice {
@@ -65,15 +65,15 @@ impl From<[u8; 2]> for DnsClass {
     }
 }
 
-impl From<DnsClass> for [u8; 2] {
+impl From<MdnsClass> for [u8; 2] {
     #[must_use]
-    fn from(class: DnsClass) -> Self {
+    fn from(class: MdnsClass) -> Self {
         match class {
-            DnsClass::IN  => [0x00, 0x01],
-            DnsClass::CH  => [0x00, 0x03],
-            DnsClass::HS  => [0x00, 0x04],
-            DnsClass::ANY => [0x00, 0xff],
-            DnsClass::Unknown(id) => [(id >> 8) as u8, (id & 0xff) as u8],
+            MdnsClass::IN  => [0x00, 0x01],
+            MdnsClass::CH  => [0x00, 0x03],
+            MdnsClass::HS  => [0x00, 0x04],
+            MdnsClass::ANY => [0x00, 0xff],
+            MdnsClass::Unknown(id) => [(id >> 8) as u8, (id & 0xff) as u8],
         }
     }
 }
@@ -84,37 +84,37 @@ mod tests {
 
     #[test]
     fn test_class_from_u16() {
-        assert_eq!(DnsClass::from(0x0001), DnsClass::IN);
-        assert_eq!(DnsClass::from(0x0003), DnsClass::CH);
-        assert_eq!(DnsClass::from(0x0004), DnsClass::HS);
-        assert_eq!(DnsClass::from(0x00ff), DnsClass::ANY);
-        assert_eq!(DnsClass::from(0x1234), DnsClass::Unknown(0x1234));
+        assert_eq!(MdnsClass::from(0x0001), MdnsClass::IN);
+        assert_eq!(MdnsClass::from(0x0003), MdnsClass::CH);
+        assert_eq!(MdnsClass::from(0x0004), MdnsClass::HS);
+        assert_eq!(MdnsClass::from(0x00ff), MdnsClass::ANY);
+        assert_eq!(MdnsClass::from(0x1234), MdnsClass::Unknown(0x1234));
     }
 
     #[test]
     fn test_u16_from_class() {
-        assert_eq!(u16::from(DnsClass::IN), 0x0001);
-        assert_eq!(u16::from(DnsClass::CH), 0x0003);
-        assert_eq!(u16::from(DnsClass::HS), 0x0004);
-        assert_eq!(u16::from(DnsClass::ANY), 0x00ff);
-        assert_eq!(u16::from(DnsClass::Unknown(0x1234)), 0x1234);
+        assert_eq!(u16::from(MdnsClass::IN), 0x0001);
+        assert_eq!(u16::from(MdnsClass::CH), 0x0003);
+        assert_eq!(u16::from(MdnsClass::HS), 0x0004);
+        assert_eq!(u16::from(MdnsClass::ANY), 0x00ff);
+        assert_eq!(u16::from(MdnsClass::Unknown(0x1234)), 0x1234);
     }
 
     #[test]
     fn test_class_from_slice() {
-        assert_eq!(DnsClass::from([0x00, 0x01]), DnsClass::IN);
-        assert_eq!(DnsClass::from([0x00, 0x03]), DnsClass::CH);
-        assert_eq!(DnsClass::from([0x00, 0x04]), DnsClass::HS);
-        assert_eq!(DnsClass::from([0x00, 0xff]), DnsClass::ANY);
-        assert_eq!(DnsClass::from([0x12, 0x34]), DnsClass::Unknown(0x1234));
+        assert_eq!(MdnsClass::from([0x00, 0x01]), MdnsClass::IN);
+        assert_eq!(MdnsClass::from([0x00, 0x03]), MdnsClass::CH);
+        assert_eq!(MdnsClass::from([0x00, 0x04]), MdnsClass::HS);
+        assert_eq!(MdnsClass::from([0x00, 0xff]), MdnsClass::ANY);
+        assert_eq!(MdnsClass::from([0x12, 0x34]), MdnsClass::Unknown(0x1234));
     }
 
     #[test]
     fn test_slice_from_class() {
-        assert_eq!(<[u8; 2]>::from(DnsClass::IN), [0x00, 0x01]);
-        assert_eq!(<[u8; 2]>::from(DnsClass::CH), [0x00, 0x03]);
-        assert_eq!(<[u8; 2]>::from(DnsClass::HS), [0x00, 0x04]);
-        assert_eq!(<[u8; 2]>::from(DnsClass::ANY), [0x00, 0xff]);
-        assert_eq!(<[u8; 2]>::from(DnsClass::Unknown(0x1234)), [0x12, 0x34]);
+        assert_eq!(<[u8; 2]>::from(MdnsClass::IN), [0x00, 0x01]);
+        assert_eq!(<[u8; 2]>::from(MdnsClass::CH), [0x00, 0x03]);
+        assert_eq!(<[u8; 2]>::from(MdnsClass::HS), [0x00, 0x04]);
+        assert_eq!(<[u8; 2]>::from(MdnsClass::ANY), [0x00, 0xff]);
+        assert_eq!(<[u8; 2]>::from(MdnsClass::Unknown(0x1234)), [0x12, 0x34]);
     }
 }

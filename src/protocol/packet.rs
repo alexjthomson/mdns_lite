@@ -1,9 +1,9 @@
 use super::{
     MdnsFlags,
     MdnsHeader,
-    Query,
-    Response,
-    Opcode,
+    MdnsQuery,
+    MdnsResponse,
+    MdnsOpcode,
     ParseMdnsError,
 };
 
@@ -13,13 +13,13 @@ pub struct MdnsPacket {
     /// Header for the [`MdnsPacket`].
     header: MdnsHeader,
     /// The questions section of the [`MdnsPacket`].
-    question_records: Vec<Query>,
+    question_records: Vec<MdnsQuery>,
     /// The answers section of the [`MdnsPacket`].
-    answer_records: Vec<Response>,
+    answer_records: Vec<MdnsResponse>,
     /// The authorities section of the [`MdnsPacket`].
-    authority_records: Vec<Response>,
+    authority_records: Vec<MdnsResponse>,
     /// The additional records section of the [`MdnsPacket`].
-    additional_records: Vec<Response>,
+    additional_records: Vec<MdnsResponse>,
 }
 
 impl MdnsPacket {
@@ -33,10 +33,10 @@ impl MdnsPacket {
     #[must_use]
     pub fn new(
         header: MdnsHeader,
-        questions: Vec<Query>,
-        answers: Vec<Response>,
-        authorities: Vec<Response>,
-        additionals: Vec<Response>,
+        questions: Vec<MdnsQuery>,
+        answers: Vec<MdnsResponse>,
+        authorities: Vec<MdnsResponse>,
+        additionals: Vec<MdnsResponse>,
     ) -> Self {
         Self {
             header,
@@ -69,13 +69,13 @@ impl MdnsPacket {
     #[must_use]
     pub fn new_with_records(
         transaction_id: u16,
-        questions: Vec<Query>,
-        answers: Vec<Response>,
-        authorities: Vec<Response>,
-        additionals: Vec<Response>,
+        questions: Vec<MdnsQuery>,
+        answers: Vec<MdnsResponse>,
+        authorities: Vec<MdnsResponse>,
+        additionals: Vec<MdnsResponse>,
     ) -> Self {
         let mut flags = MdnsFlags::empty();
-        flags.set_opcode(Opcode::Query);
+        flags.set_opcode(MdnsOpcode::Query);
         flags.set_qr(!answers.is_empty());
         flags.set_aa(!authorities.is_empty());
         let header = MdnsHeader::new(
@@ -101,11 +101,11 @@ impl MdnsPacket {
     #[must_use]
     pub fn new_query(
         transaction_id: u16,
-        questions: Vec<Query>
+        questions: Vec<MdnsQuery>
     ) -> Self {
         // Create the header:
         let mut flags = MdnsFlags::empty();
-        flags.set_opcode(Opcode::Query);
+        flags.set_opcode(MdnsOpcode::Query);
         flags.set_qr(false);
         let total_questions = questions.len() as u16;
         let header = MdnsHeader::new(
@@ -133,13 +133,13 @@ impl MdnsPacket {
     #[must_use]
     pub fn new_response(
         transaction_id: u16,
-        answers: Vec<Response>,
-        authorities: Vec<Response>,
-        additionals: Vec<Response>,
+        answers: Vec<MdnsResponse>,
+        authorities: Vec<MdnsResponse>,
+        additionals: Vec<MdnsResponse>,
     ) -> Self {
         // Create header:
         let mut flags = MdnsFlags::empty();
-        flags.set_opcode(Opcode::Query);
+        flags.set_opcode(MdnsOpcode::Query);
         flags.set_qr(true);
         let total_answers = answers.len() as u16;
         let total_authority_records = authorities.len() as u16;
@@ -180,7 +180,7 @@ impl MdnsPacket {
     /// [`MdnsPacket`].
     #[inline]
     #[must_use]
-    pub fn questions(&self) -> &Vec<Query> {
+    pub fn questions(&self) -> &Vec<MdnsQuery> {
         &self.question_records
     }
 
@@ -194,7 +194,7 @@ impl MdnsPacket {
     /// Returns an immutable reference to the answers within the [`MdnsPacket`].
     #[inline]
     #[must_use]
-    pub fn answers(&self) -> &Vec<Response> {
+    pub fn answers(&self) -> &Vec<MdnsResponse> {
         &self.answer_records
     }
 
@@ -209,7 +209,7 @@ impl MdnsPacket {
     /// [`MdnsPacket`].
     #[inline]
     #[must_use]
-    pub fn authorities(&self) -> &Vec<Response> {
+    pub fn authorities(&self) -> &Vec<MdnsResponse> {
         &self.authority_records
     }
 
@@ -224,7 +224,7 @@ impl MdnsPacket {
     /// [`MdnsPacket`].
     #[inline]
     #[must_use]
-    pub fn additionals(&self) -> &Vec<Response> {
+    pub fn additionals(&self) -> &Vec<MdnsResponse> {
         &self.additional_records
     }
 
@@ -236,51 +236,51 @@ impl MdnsPacket {
     }
 
     /// Adds a new question to the [`MdnsPacket`] and updates the header.
-    pub fn add_question(&mut self, question: Query) {
+    pub fn add_question(&mut self, question: MdnsQuery) {
         self.question_records.push(question);
         self.header.set_total_question_records(self.question_records.len() as u16);
     }
 
     /// Adds a set of questions to the [`MdnsPacket`] and updates the header.
-    pub fn add_questions(&mut self, questions: Vec<Query>) {
+    pub fn add_questions(&mut self, questions: Vec<MdnsQuery>) {
         self.question_records.extend(questions);
         self.header.set_total_question_records(self.question_records.len() as u16);
     }
 
     /// Adds a new answer to the [`MdnsPacket`] and updates the header.
-    pub fn add_answer(&mut self, answer: Response) {
+    pub fn add_answer(&mut self, answer: MdnsResponse) {
         self.answer_records.push(answer);
         self.header.set_total_answer_records(self.answer_records.len() as u16);
     }
 
     /// Adds a set of answers to the [`MdnsPacket`] and updates the header.
-    pub fn add_answers(&mut self, answers: Vec<Response>) {
+    pub fn add_answers(&mut self, answers: Vec<MdnsResponse>) {
         self.answer_records.extend(answers);
         self.header.set_total_answer_records(self.answer_records.len() as u16);
     }
 
     /// Adds a new authority to the [`MdnsPacket`] and updates the header.
-    pub fn add_authority(&mut self, authority: Response) {
+    pub fn add_authority(&mut self, authority: MdnsResponse) {
         self.authority_records.push(authority);
         self.header.set_total_authority_records(self.authority_records.len() as u16);
     }
 
     /// Adds new authorities to the [`MdnsPacket`] and updates the header.
-    pub fn add_authorities(&mut self, authorities: Vec<Response>) {
+    pub fn add_authorities(&mut self, authorities: Vec<MdnsResponse>) {
         self.authority_records.extend(authorities);
         self.header.set_total_authority_records(self.authority_records.len() as u16);
     }
 
     /// Adds a new additional record to the [`MdnsPacket`] and updates the
     /// header.
-    pub fn add_additional(&mut self, additional: Response) {
+    pub fn add_additional(&mut self, additional: MdnsResponse) {
         self.additional_records.push(additional);
         self.header.set_total_additional_records(self.additional_records.len() as u16);
     }
 
     /// Adds a set of additional records to the [`MdnsPacket`] and updates the
     /// header.
-    pub fn add_additionals(&mut self, additionals: Vec<Response>) {
+    pub fn add_additionals(&mut self, additionals: Vec<MdnsResponse>) {
         self.additional_records.extend(additionals);
         self.header.set_total_additional_records(self.additional_records.len() as u16);
     }
@@ -289,12 +289,12 @@ impl MdnsPacket {
     #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut packet: Vec<u8> = self.header.to_bytes().to_vec();
-        fn write_queries(packet: &mut Vec<u8>, queries: &[Query]) {
+        fn write_queries(packet: &mut Vec<u8>, queries: &[MdnsQuery]) {
             for query in queries.iter() {
                 query.to_bytes_extend(packet);
             }
         }
-        fn write_responses(packet: &mut Vec<u8>, responses: &[Response]) {
+        fn write_responses(packet: &mut Vec<u8>, responses: &[MdnsResponse]) {
             for response in responses.iter() {
                 response.to_bytes_extend(packet);
             }
@@ -320,10 +320,10 @@ impl MdnsPacket {
             bytes: &[u8],
             offset: &mut usize,
             total_queries: u16,
-        ) -> Result<Vec<Query>, ParseMdnsError> {
+        ) -> Result<Vec<MdnsQuery>, ParseMdnsError> {
             let mut queries = Vec::with_capacity(total_queries as usize);
             for _ in 0..total_queries {
-                queries.push(Query::from_bytes(bytes, offset)?);
+                queries.push(MdnsQuery::from_bytes(bytes, offset)?);
             }
             Ok(queries)
         }
@@ -332,10 +332,10 @@ impl MdnsPacket {
             bytes: &[u8],
             offset: &mut usize,
             total_responses: u16,
-        ) -> Result<Vec<Response>, ParseMdnsError> {
+        ) -> Result<Vec<MdnsResponse>, ParseMdnsError> {
             let mut responses = Vec::with_capacity(total_responses as usize);
             for _ in 0..total_responses {
-                responses.push(Response::from_bytes(bytes, offset)?);
+                responses.push(MdnsResponse::from_bytes(bytes, offset)?);
             }
             Ok(responses)
         }
@@ -395,20 +395,20 @@ mod tests {
     #[test]
     fn test_populate_packet() {
         let mut packet = MdnsPacket::new_empty(1234);
-        let question: Query = Query::new(
-            DnsName::from_name("my_sensor._http._tcp.local.").unwrap(),
-            DnsType::A,
-            DnsClass::IN,
+        let question: MdnsQuery = MdnsQuery::new(
+            MdnsName::from_name("my_sensor._http._tcp.local.").unwrap(),
+            MdnsType::A,
+            MdnsClass::IN,
         );
 
         packet.add_question(question.clone());
         assert_eq!(packet.questions().len(), 1);
         assert_eq!(packet.questions()[0], question);
 
-        let response = Response::new(
-            DnsName::from_name("my_sensor._http._tcp.local.").unwrap(),
-            DnsType::A,
-            DnsClass::IN,
+        let response = MdnsResponse::new(
+            MdnsName::from_name("my_sensor._http._tcp.local.").unwrap(),
+            MdnsType::A,
+            MdnsClass::IN,
             120,
             vec![127, 0, 0, 1],
         );
@@ -450,10 +450,10 @@ mod tests {
         }
         // Test query packet:
         test_from_bytes(MdnsPacket::new_query(1234, vec![
-            Query::new(
-                DnsName::from_name("test_service._http._tcp.local.").unwrap(),
-                DnsType::PTR,
-                DnsClass::IN,
+            MdnsQuery::new(
+                MdnsName::from_name("test_service._http._tcp.local.").unwrap(),
+                MdnsType::PTR,
+                MdnsClass::IN,
             ),
         ]));
         // Test response packet:
@@ -461,28 +461,28 @@ mod tests {
             MdnsPacket::new_response(
                 1234,
                 vec![
-                        Response::new(
-                        DnsName::from_name("test_service._http._tcp.local.").unwrap(),
-                        DnsType::PTR,
-                        DnsClass::IN,
+                        MdnsResponse::new(
+                        MdnsName::from_name("test_service._http._tcp.local.").unwrap(),
+                        MdnsType::PTR,
+                        MdnsClass::IN,
                         120,
                         vec![127, 0, 0, 1],
                     )
                 ],
                 vec![
-                        Response::new(
-                        DnsName::from_name("test_service._http._tcp.local.").unwrap(),
-                        DnsType::PTR,
-                        DnsClass::IN,
+                        MdnsResponse::new(
+                        MdnsName::from_name("test_service._http._tcp.local.").unwrap(),
+                        MdnsType::PTR,
+                        MdnsClass::IN,
                         300,
                         Vec::new(),
                     )
                 ],
                 vec![
-                        Response::new(
-                        DnsName::from_name("test_service._http._tcp.local.").unwrap(),
-                        DnsType::PTR,
-                        DnsClass::IN,
+                        MdnsResponse::new(
+                        MdnsName::from_name("test_service._http._tcp.local.").unwrap(),
+                        MdnsType::PTR,
+                        MdnsClass::IN,
                         600,
                         vec![0, 1, 2, 3, 4, 5, 6, 7],
                     )

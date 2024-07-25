@@ -14,16 +14,16 @@ pub mod rcode;
 pub mod response;
 pub mod r#type;
 
-pub use class::DnsClass;
+pub use class::MdnsClass;
 pub use flags::MdnsFlags;
 pub use header::MdnsHeader;
-pub use name::DnsName;
-pub use opcode::Opcode;
+pub use name::MdnsName;
+pub use opcode::MdnsOpcode;
 pub use packet::MdnsPacket;
-pub use query::Query;
-pub use rcode::Rcode;
-pub use response::Response;
-pub use r#type::DnsType;
+pub use query::MdnsQuery;
+pub use rcode::MdnsRcode;
+pub use response::MdnsResponse;
+pub use r#type::MdnsType;
 
 use thiserror::Error;
 
@@ -50,9 +50,9 @@ pub enum ParseMdnsError {
     InvalidEndOfLabels,
 }
 
-/// Error type for [`DnsName`].
+/// Error type for [`MdnsName`].
 #[derive(PartialEq, Eq, Debug, Error)]
-pub enum DnsNameError {
+pub enum MdnsNameError {
     #[error("DNS name must end with a `.`.")]
     MustEndWithDot,
     #[error("Each label must be 63 characters or less.")]

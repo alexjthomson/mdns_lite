@@ -1,8 +1,8 @@
-/// Describes the `RCODE` field in [`MdnsFlags`].
+/// Describes the `RCODE` field in [`MdnsFlags`](super::MdnsFlags).
 /// 
 /// This indicates the result of a query.
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum Rcode {
+pub enum MdnsRcode {
     /// No error condition.
     NoError,
     /// Unable to interpret the query.

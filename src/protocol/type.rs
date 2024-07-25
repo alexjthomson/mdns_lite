@@ -3,7 +3,7 @@
 /// This represents the type of record being queries or responded to. Each
 /// variant corresponds to a specific type of DNS record.
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum DnsType {
+pub enum MdnsType {
     /// IPv4 record (A).
     /// 
     /// Requests or returns the IPv4 address associated with a domain name.
@@ -52,7 +52,7 @@ pub enum DnsType {
     Unknown(u16),
 }
 
-impl From<u16> for DnsType {
+impl From<u16> for MdnsType {
     #[must_use]
     fn from(id: u16) -> Self {
         match id {
@@ -70,43 +70,43 @@ impl From<u16> for DnsType {
     }
 }
 
-impl From<DnsType> for u16 {
+impl From<MdnsType> for u16 {
     #[must_use]
-    fn from(dns_type: DnsType) -> Self {
+    fn from(dns_type: MdnsType) -> Self {
         match dns_type {
-            DnsType::A     => 0x0001,
-            DnsType::AAAA  => 0x001c,
-            DnsType::CNAME => 0x0005,
-            DnsType::MX    => 0x000f,
-            DnsType::PTR   => 0x000c,
-            DnsType::SOA   => 0x0006,
-            DnsType::TXT   => 0x0010,
-            DnsType::SRV   => 0x0021,
-            DnsType::ANY   => 0x00ff,
-            DnsType::Unknown(value) => value,
+            MdnsType::A     => 0x0001,
+            MdnsType::AAAA  => 0x001c,
+            MdnsType::CNAME => 0x0005,
+            MdnsType::MX    => 0x000f,
+            MdnsType::PTR   => 0x000c,
+            MdnsType::SOA   => 0x0006,
+            MdnsType::TXT   => 0x0010,
+            MdnsType::SRV   => 0x0021,
+            MdnsType::ANY   => 0x00ff,
+            MdnsType::Unknown(value) => value,
         }
     }
 }
 
-impl From<DnsType> for [u8; 2] {
+impl From<MdnsType> for [u8; 2] {
     #[must_use]
-    fn from(dns_class: DnsType) -> Self {
+    fn from(dns_class: MdnsType) -> Self {
         match dns_class {
-            DnsType::A     => [0x00, 0x01],
-            DnsType::AAAA  => [0x00, 0x1c],
-            DnsType::CNAME => [0x00, 0x05],
-            DnsType::MX    => [0x00, 0x0f],
-            DnsType::PTR   => [0x00, 0x0c],
-            DnsType::SOA   => [0x00, 0x06],
-            DnsType::TXT   => [0x00, 0x10],
-            DnsType::SRV   => [0x00, 0x21],
-            DnsType::ANY   => [0x00, 0xff],
-            DnsType::Unknown(value) => [(value >> 8) as u8, (value & 0xff) as u8],
+            MdnsType::A     => [0x00, 0x01],
+            MdnsType::AAAA  => [0x00, 0x1c],
+            MdnsType::CNAME => [0x00, 0x05],
+            MdnsType::MX    => [0x00, 0x0f],
+            MdnsType::PTR   => [0x00, 0x0c],
+            MdnsType::SOA   => [0x00, 0x06],
+            MdnsType::TXT   => [0x00, 0x10],
+            MdnsType::SRV   => [0x00, 0x21],
+            MdnsType::ANY   => [0x00, 0xff],
+            MdnsType::Unknown(value) => [(value >> 8) as u8, (value & 0xff) as u8],
         }
     }
 }
 
-impl From<[u8; 2]> for DnsType {
+impl From<[u8; 2]> for MdnsType {
     #[must_use]
     fn from(slice: [u8; 2]) -> Self {
         match slice {
@@ -132,9 +132,9 @@ mod tests {
 
     #[test]
     fn test_dns_type() {
-        assert_eq!(DnsType::from(0x0001), DnsType::A);
-        assert_eq!(u16::from(DnsType::A), 0x0001);
-        assert_eq!(<[u8; 2]>::from(DnsType::A), [0x00, 0x01]);
-        assert_eq!(DnsType::from([0x00, 0x01]), DnsType::A);
+        assert_eq!(MdnsType::from(0x0001), MdnsType::A);
+        assert_eq!(u16::from(MdnsType::A), 0x0001);
+        assert_eq!(<[u8; 2]>::from(MdnsType::A), [0x00, 0x01]);
+        assert_eq!(MdnsType::from([0x00, 0x01]), MdnsType::A);
     }
 }

@@ -37,11 +37,11 @@ use mio::{
 use thiserror::Error;
 
 use crate::{
-    DnsName, DnsType, MdnsPacket, MdnsService, MdnsServiceError, Query, Response, TxtRecords
+    MdnsName, MdnsType, MdnsPacket, MdnsService, MdnsServiceError, MdnsQuery, MdnsResponse, TxtRecords
 };
 
 /// Convenience type for a thread-safe set of [`MdnsService`]s.
-pub type MdnsServices = Arc<Mutex<HashMap<DnsName, MdnsService>>>;
+pub type MdnsServices = Arc<Mutex<HashMap<MdnsName, MdnsService>>>;
 /// Listens for mDNS packets.
 pub struct MdnsListener {
     poll: Poll,
@@ -296,7 +296,7 @@ impl MdnsBroadcasterInternal {
 
             // Respond to each question in the packet:
             let questions = packet.questions();
-            let mut answers: Vec<Response> = Vec::with_capacity(questions.len());
+            let mut answers: Vec<MdnsResponse> = Vec::with_capacity(questions.len());
             for question in questions {
                 // TODO: This needs redoing:
                 // Questions may be asked about services; however, they may also
@@ -311,10 +311,10 @@ impl MdnsBroadcasterInternal {
                 // services, which is only part of responding to mDNS questions.
                 if let Some(service) = services.get(question.name()) {
                     match question.query_type() {
-                        DnsType::A => {
+                        MdnsType::A => {
                             if let Some(ipv4_address) = &self.device_ipv4 {
                                 answers.push(
-                                    Response::new_a(
+                                    MdnsResponse::new_a(
                                         question.name().clone(),
                                         self.ttl,
                                         ipv4_address.clone(),
@@ -322,10 +322,10 @@ impl MdnsBroadcasterInternal {
                                 );
                             }
                         },
-                        DnsType::AAAA => {
+                        MdnsType::AAAA => {
                             if let Some(ipv6_address) = &self.device_ipv6 {
                                 answers.push(
-                                    Response::new_aaaa(
+                                    MdnsResponse::new_aaaa(
                                         question.name().clone(),
                                         self.ttl,
                                         ipv6_address.clone(),
@@ -333,8 +333,8 @@ impl MdnsBroadcasterInternal {
                                 );
                             }
                         },
-                        DnsType::TXT => {
-                            match Response::new_txt(
+                        MdnsType::TXT => {
+                            match MdnsResponse::new_txt(
                                 question.name().clone(),
                                 self.ttl,
                                 service.records(),
@@ -347,11 +347,11 @@ impl MdnsBroadcasterInternal {
                                 ),
                             }
                         },
-                        DnsType::SRV => {
+                        MdnsType::SRV => {
                             // TODO: Respond with a hostname and port for the
                             // service instance.
                         },
-                        DnsType::ANY => {
+                        MdnsType::ANY => {
                             // TODO: Respond with all available information
                             // about the service.
                         },

@@ -1,6 +1,6 @@
 use super::{
-    opcode::Opcode,
-    rcode::Rcode,
+    opcode::MdnsOpcode,
+    rcode::MdnsRcode,
 };
 
 /// Represents the flags in an [`MdnsHeader`].
@@ -91,23 +91,23 @@ impl MdnsFlags {
     /// Gets the OPCODE field.
     #[inline]
     #[must_use]
-    pub fn opcode(&self) -> Opcode {
+    pub fn opcode(&self) -> MdnsOpcode {
         match (self.0 & Self::OPCODE_MASK) >> 11 {
-            0 => Opcode::Query,
-            1 => Opcode::IQuery,
-            2 => Opcode::Status,
-            unknown => Opcode::Unknown(unknown as u8),
+            0 => MdnsOpcode::Query,
+            1 => MdnsOpcode::IQuery,
+            2 => MdnsOpcode::Status,
+            unknown => MdnsOpcode::Unknown(unknown as u8),
         }
     }
 
     /// Sets the OPCODE field.
     #[inline]
-    pub fn set_opcode(&mut self, opcode: Opcode) {
+    pub fn set_opcode(&mut self, opcode: MdnsOpcode) {
         let opcode: u16 = match opcode {
-            Opcode::Query => 0,
-            Opcode::IQuery => 1,
-            Opcode::Status => 2,
-            Opcode::Unknown(other) => other as u16,
+            MdnsOpcode::Query => 0,
+            MdnsOpcode::IQuery => 1,
+            MdnsOpcode::Status => 2,
+            MdnsOpcode::Unknown(other) => other as u16,
         };
         self.0 = (self.0 & !Self::OPCODE_MASK) | ((opcode & 0x0f) << 11);
     }
@@ -187,46 +187,30 @@ impl MdnsFlags {
 
     /// Gets the RCODE (Response Code) field.
     #[inline]
-    pub fn rcode(&self) -> Rcode {
+    pub fn rcode(&self) -> MdnsRcode {
         match self.0 & Self::RCODE_MASK {
-            0 => Rcode::NoError,
-            1 => Rcode::FormatError,
-            2 => Rcode::ServerFailure,
-            3 => Rcode::NameError,
-            4 => Rcode::NotImplemented,
-            5 => Rcode::Refused,
-            unknown => Rcode::Unknown(unknown as u8),
+            0 => MdnsRcode::NoError,
+            1 => MdnsRcode::FormatError,
+            2 => MdnsRcode::ServerFailure,
+            3 => MdnsRcode::NameError,
+            4 => MdnsRcode::NotImplemented,
+            5 => MdnsRcode::Refused,
+            unknown => MdnsRcode::Unknown(unknown as u8),
         }
     }
 
     /// Sets the RCODE (Response Code) field.
-    pub fn set_rcode(&mut self, rcode: Rcode) {
+    pub fn set_rcode(&mut self, rcode: MdnsRcode) {
         let rcode = match rcode {
-            Rcode::NoError => 0,
-            Rcode::FormatError => 1,
-            Rcode::ServerFailure => 2,
-            Rcode::NameError => 3,
-            Rcode::NotImplemented => 4,
-            Rcode::Refused => 5,
-            Rcode::Unknown(value) => value,
+            MdnsRcode::NoError => 0,
+            MdnsRcode::FormatError => 1,
+            MdnsRcode::ServerFailure => 2,
+            MdnsRcode::NameError => 3,
+            MdnsRcode::NotImplemented => 4,
+            MdnsRcode::Refused => 5,
+            MdnsRcode::Unknown(value) => value,
         };
         self.0 = (self.0 & !Self::RCODE_MASK) | (rcode as u16);
-    }
-}
-
-impl From<u16> for MdnsFlags {
-    #[inline]
-    #[must_use]
-    fn from(flags: u16) -> Self {
-        Self(flags)
-    }
-}
-
-impl From<[u8; 2]> for MdnsFlags {
-    #[inline]
-    #[must_use]
-    fn from(slice: [u8; 2]) -> Self {
-        Self(u16::from_be_bytes(slice))
     }
 }
 
@@ -238,6 +222,30 @@ impl From<MdnsFlags> for u16 {
     }
 }
 
+impl From<u16> for MdnsFlags {
+    #[inline]
+    #[must_use]
+    fn from(flags: u16) -> Self {
+        Self(flags)
+    }
+}
+
+impl From<MdnsFlags> for [u8; 2] {
+    #[inline]
+    #[must_use]
+    fn from(flags: MdnsFlags) -> Self {
+        u16::to_be_bytes(flags.0)
+    }
+}
+
+impl From<[u8; 2]> for MdnsFlags {
+    #[inline]
+    #[must_use]
+    fn from(slice: [u8; 2]) -> Self {
+        Self(u16::from_be_bytes(slice))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -245,7 +253,7 @@ mod tests {
     // TODO: Achieve 100% test coverage on MdnsFlags.
 
     #[test]
-    fn test_mdns_flags() {
+    fn test_flags() {
         let mut flags = MdnsFlags::empty();
         assert!(!flags.qr());
         flags.set_qr(true);
@@ -253,13 +261,13 @@ mod tests {
         flags.set_qr(false);
         assert!(!flags.qr());
 
-        assert_eq!(flags.opcode(), Opcode::Query);
-        flags.set_opcode(Opcode::IQuery);
-        assert_eq!(flags.opcode(), Opcode::IQuery);
-        flags.set_opcode(Opcode::Status);
-        assert_eq!(flags.opcode(), Opcode::Status);
-        flags.set_opcode(Opcode::Unknown(9));
-        assert_eq!(flags.opcode(), Opcode::Unknown(9));
+        assert_eq!(flags.opcode(), MdnsOpcode::Query);
+        flags.set_opcode(MdnsOpcode::IQuery);
+        assert_eq!(flags.opcode(), MdnsOpcode::IQuery);
+        flags.set_opcode(MdnsOpcode::Status);
+        assert_eq!(flags.opcode(), MdnsOpcode::Status);
+        flags.set_opcode(MdnsOpcode::Unknown(9));
+        assert_eq!(flags.opcode(), MdnsOpcode::Unknown(9));
 
         assert!(!flags.aa());
         flags.set_aa(true);
@@ -285,29 +293,29 @@ mod tests {
         flags.set_ra(false);
         assert!(!flags.ra());
 
-        assert_eq!(flags.rcode(), Rcode::NoError);
-        flags.set_rcode(Rcode::FormatError);
-        assert_eq!(flags.rcode(), Rcode::FormatError);
-        flags.set_rcode(Rcode::ServerFailure);
-        assert_eq!(flags.rcode(), Rcode::ServerFailure);
-        flags.set_rcode(Rcode::NameError);
-        assert_eq!(flags.rcode(), Rcode::NameError);
-        flags.set_rcode(Rcode::NotImplemented);
-        assert_eq!(flags.rcode(), Rcode::NotImplemented);
-        flags.set_rcode(Rcode::Refused);
-        assert_eq!(flags.rcode(), Rcode::Refused);
-        flags.set_rcode(Rcode::Unknown(7));
-        assert_eq!(flags.rcode(), Rcode::Unknown(7));
+        assert_eq!(flags.rcode(), MdnsRcode::NoError);
+        flags.set_rcode(MdnsRcode::FormatError);
+        assert_eq!(flags.rcode(), MdnsRcode::FormatError);
+        flags.set_rcode(MdnsRcode::ServerFailure);
+        assert_eq!(flags.rcode(), MdnsRcode::ServerFailure);
+        flags.set_rcode(MdnsRcode::NameError);
+        assert_eq!(flags.rcode(), MdnsRcode::NameError);
+        flags.set_rcode(MdnsRcode::NotImplemented);
+        assert_eq!(flags.rcode(), MdnsRcode::NotImplemented);
+        flags.set_rcode(MdnsRcode::Refused);
+        assert_eq!(flags.rcode(), MdnsRcode::Refused);
+        flags.set_rcode(MdnsRcode::Unknown(7));
+        assert_eq!(flags.rcode(), MdnsRcode::Unknown(7));
     }
 
     #[test]
-    fn test_mdns_flags_from_u16() {
+    fn test_flags_from_u16() {
         let flags: MdnsFlags = MdnsFlags::from(MdnsFlags::QR_MASK);
         assert!(flags.qr());
     }
 
     #[test]
-    fn test_mdns_flags_to_u16() {
+    fn test_flags_to_u16() {
         let mut flags: MdnsFlags = MdnsFlags::empty();
         assert_eq!(Into::<u16>::into(flags), 0x0000);
 

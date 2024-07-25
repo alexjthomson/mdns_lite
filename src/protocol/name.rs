@@ -1,20 +1,20 @@
 use super::{
     ParseMdnsError,
-    DnsNameError
+    MdnsNameError
 };
 
-/// Represents a DNS name with its labels.
+/// Represents an mDNS name with its labels.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub struct DnsName {
-    /// Labels that make up the [`DnsName`].
+pub struct MdnsName {
+    /// Labels that make up the [`MdnsName`].
     labels: Vec<String>,
 }
 
-impl DnsName {
-    /// Creates a new [`DnsName`].
+impl MdnsName {
+    /// Creates a new [`MdnsName`].
     /// 
     /// ## Note
-    /// Prefer using [`DnsName::from_name`] since this function does not
+    /// Prefer using [`MdnsName::from_name`] since this function does not
     /// validate the `labels` provided to it.
     #[inline]
     #[must_use]
@@ -22,15 +22,15 @@ impl DnsName {
         Self { labels }
     }
 
-    /// Creates a new [`DnsName`] from a string representation of the name.
+    /// Creates a new [`MdnsName`] from a string representation of the name.
     /// 
     /// The string representation should be formatted as follows:
     /// `instance_name._service_type_name._service_type_protocol.service_domain.`,
     /// and may contain any number of labels. The string must end with a dot and
     /// only contain alphanumeric characters, hyphens, and underscores.
-    pub fn from_name(name: &str) -> Result<Self, DnsNameError> {
+    pub fn from_name(name: &str) -> Result<Self, MdnsNameError> {
         if name.is_empty() || !name.ends_with('.') {
-            return Err(DnsNameError::MustEndWithDot);
+            return Err(MdnsNameError::MustEndWithDot);
         }
         let labels: Vec<String> = name
             .trim_end_matches('.')
@@ -40,13 +40,13 @@ impl DnsName {
 
         for label in &labels {
             if label.len() > 63 {
-                return Err(DnsNameError::LabelTooLong);
+                return Err(MdnsNameError::LabelTooLong);
             }
         }
-        Ok(DnsName::new(labels))
+        Ok(MdnsName::new(labels))
     }
 
-    /// Convert the [`DnsName`] to its wire format
+    /// Convert the [`MdnsName`] to its wire format
     #[must_use]
     pub fn to_wire_format(&self) -> Vec<u8> {
         let mut wire_format = Vec::new();
@@ -59,7 +59,7 @@ impl DnsName {
         wire_format
     }
 
-    /// Create a [`DnsName`] from wire format
+    /// Create a [`MdnsName`] from wire format
     pub fn from_wire_format(data: &[u8], offset: &mut usize) -> Result<Self, ParseMdnsError> {
         let mut labels = Vec::new();
         let mut i: usize = *offset;
@@ -102,39 +102,39 @@ impl DnsName {
             return Err(ParseMdnsError::InvalidEndOfLabels);
         }
         *offset = i + 1;
-        Ok(DnsName { labels })
+        Ok(MdnsName { labels })
     }
 }
 
-impl std::fmt::Display for DnsName {
+impl std::fmt::Display for MdnsName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}.", self.labels.join("."))
     }
 }
 
-impl From<Vec<String>> for DnsName {
+impl From<Vec<String>> for MdnsName {
     fn from(labels: Vec<String>) -> Self {
-        DnsName::new(labels)
+        MdnsName::new(labels)
     }
 }
 
-impl From<DnsName> for Vec<String> {
-    fn from(dns_name: DnsName) -> Self {
+impl From<MdnsName> for Vec<String> {
+    fn from(dns_name: MdnsName) -> Self {
         dns_name.labels
     }
 }
 
-impl TryFrom<&str> for DnsName {
-    type Error = DnsNameError;
+impl TryFrom<&str> for MdnsName {
+    type Error = MdnsNameError;
     fn try_from(name: &str) -> Result<Self, Self::Error> {
-        DnsName::from_name(name)
+        MdnsName::from_name(name)
     }
 }
 
-impl TryFrom<String> for DnsName {
-    type Error = DnsNameError;
+impl TryFrom<String> for MdnsName {
+    type Error = MdnsNameError;
     fn try_from(name: String) -> Result<Self, Self::Error> {
-        DnsName::from_name(name.as_str())
+        MdnsName::from_name(name.as_str())
     }
 }
 
@@ -146,27 +146,27 @@ mod tests {
 
     #[test]
     fn test_name_from_str() {
-        let dns_name = DnsName::from_name("example_service._http._tcp.local.").unwrap();
+        let dns_name = MdnsName::from_name("example_service._http._tcp.local.").unwrap();
         assert_eq!(dns_name.labels, vec!["example_service", "_http", "_tcp", "local"]);
     }
 
     #[test]
     fn test_name_from_invalid_str() {
-        let err = DnsName::from_name("example_service._http._tcp.local").unwrap_err();
-        assert_eq!(err, DnsNameError::MustEndWithDot);
+        let err = MdnsName::from_name("example_service._http._tcp.local").unwrap_err();
+        assert_eq!(err, MdnsNameError::MustEndWithDot);
     }
 
     #[test]
     fn test_name_from_long_label_str() {
         let mut label = "a".repeat(64);
         label.push('.');
-        let err = DnsName::from_name(label.as_str()).unwrap_err();
-        assert_eq!(err, DnsNameError::LabelTooLong);
+        let err = MdnsName::from_name(label.as_str()).unwrap_err();
+        assert_eq!(err, MdnsNameError::LabelTooLong);
     }
 
     #[test]
     fn test_name_to_wire_format() {
-        let dns_name = DnsName::from_name("example_service._http._tcp.local.").unwrap();
+        let dns_name = MdnsName::from_name("example_service._http._tcp.local.").unwrap();
         let wire_format = dns_name.to_wire_format();
         assert_eq!(wire_format, vec![
             15, b'e', b'x', b'a', b'm', b'p', b'l', b'e', b'_', b's', b'e', b'r', b'v', b'i', b'c', b'e',
@@ -187,7 +187,7 @@ mod tests {
             0
         ];
         let mut offset = 0;
-        let dns_name = DnsName::from_wire_format(&wire_format, &mut offset).unwrap();
+        let dns_name = MdnsName::from_wire_format(&wire_format, &mut offset).unwrap();
         assert_eq!(dns_name.labels, vec!["example_service", "_http", "_tcp", "local"]);
         assert_eq!(offset, wire_format.len());
     }
@@ -200,7 +200,7 @@ mod tests {
             4, b'_', b't', b'c', b'p',
             5, b'l', b'o', b'c', b'a', b'l',
         ];
-        let err = DnsName::from_wire_format(&wire_format, &mut 0).unwrap_err();
+        let err = MdnsName::from_wire_format(&wire_format, &mut 0).unwrap_err();
         assert_eq!(err, ParseMdnsError::InvalidEndOfLabels);
     }
 }

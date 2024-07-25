@@ -1,9 +1,10 @@
-/// Describes the `OPCODE` field in [`MdnsFlags`].
+/// Describes the `OPCODE` field in [`MdnsFlags`](super::MdnsFlags).
 /// 
-/// This field indicates the kind of query contained within an [`MdnsPacket`].
-/// Values are defined according to the DNS protocol specifications.
+/// This field indicates the kind of query contained within an
+/// [`MdnsPacket`](super::MdnsPacket). Values are defined according to the DNS
+/// protocol specifications.
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum Opcode {
+pub enum MdnsOpcode {
     /// Standard query (QUERY).
     /// 
     /// This is used to request information about a domain name, such as its IP

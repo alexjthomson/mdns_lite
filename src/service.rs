@@ -6,11 +6,11 @@ use heapless::FnvIndexMap;
 use thiserror::Error;
 
 use crate::{
-    DnsClass,
-    DnsName,
-    DnsType,
+    MdnsClass,
+    MdnsName,
+    MdnsType,
     MdnsPacket,
-    Response,
+    MdnsResponse,
 };
 
 /// Defines errors that can occur when interacting with [`MdnsService`] or
@@ -496,8 +496,8 @@ impl MdnsService {
 
     /// Calculates and returns the full service [`DnsName`].
     #[must_use]
-    pub fn service_name(&self) -> DnsName {
-        DnsName::new(self.labels().to_vec())
+    pub fn service_name(&self) -> MdnsName {
+        MdnsName::new(self.labels().to_vec())
     }
 
     /// Calculates and returns the full host [`DnsName`].
@@ -505,12 +505,12 @@ impl MdnsService {
     /// This is the same as the [`Self::service_name()`], but without the
     /// service type included.
     #[must_use]
-    pub fn host_name(&self) -> DnsName {
+    pub fn host_name(&self) -> MdnsName {
         let capacity: usize = self.instance_name_labels.len() + 1;
         let mut labels: Vec<String> = Vec::with_capacity(capacity);
         labels.extend(self.instance_name_labels.iter().cloned());
         labels.push(self.service_domain.clone());
-        DnsName::new(labels.to_vec())
+        MdnsName::new(labels.to_vec())
     }
 
     /// Creates an [`MdnsPacket`] that announces this service.
@@ -530,8 +530,8 @@ impl MdnsService {
 
         // PTR Record:
         // This record maps the service type to the specific service instance.
-        answers.push(Response::new(
-            DnsName::new({
+        answers.push(MdnsResponse::new(
+            MdnsName::new({
                 // The DNS name for the PTR record should only contain the
                 // service type:
                 let mut service_type_labels = Vec::new();
@@ -539,8 +539,8 @@ impl MdnsService {
                 service_type_labels.push(self.service_domain.clone());
                 service_type_labels
             }),
-            DnsType::PTR,
-            DnsClass::IN,
+            MdnsType::PTR,
+            MdnsClass::IN,
             ttl,
             service_name_bytes.clone(),
         ));
@@ -548,7 +548,7 @@ impl MdnsService {
         // SRV Record:
         // This record provides the hostname and port where the service can be
         // accessed.
-        answers.push(Response::new_srv(
+        answers.push(MdnsResponse::new_srv(
             service_name.clone(),
             ttl,
             0,
@@ -562,10 +562,10 @@ impl MdnsService {
         // about the service. This record is only included if there are any TXT
         // records included with the service:
         if !self.txt_records.is_empty() {
-            answers.push(Response::new(
+            answers.push(MdnsResponse::new(
                 service_name.clone(),
-                DnsType::TXT,
-                DnsClass::IN,
+                MdnsType::TXT,
+                MdnsClass::IN,
                 ttl,
                 self.txt_records.to_wire_format()?,
             ));
@@ -576,14 +576,14 @@ impl MdnsService {
         // addresses.
         let mut authoritative_nameservers = Vec::new();
         if let Some(ipv4) = ipv4 {
-            authoritative_nameservers.push(Response::new_a(
+            authoritative_nameservers.push(MdnsResponse::new_a(
                 host_name.clone(),
                 ttl,
                 ipv4.clone(),
             ));
         }
         if let Some(ipv6) = ipv6 {
-            authoritative_nameservers.push(Response::new_aaaa(
+            authoritative_nameservers.push(MdnsResponse::new_aaaa(
                 host_name,
                 ttl,
                 ipv6.clone(),
