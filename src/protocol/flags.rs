@@ -223,10 +223,114 @@ impl From<[u8; 2]> for MdnsFlags {
 mod tests {
     use super::*;
 
-    // TODO: Achieve 100% test coverage on MdnsFlags.
-
+    /// Ensures that [`MdnsFlags::empty`] returns an empty set of flags.
     #[test]
-    fn test_flags() {
+    fn test_empty_flags() {
+        let flags: MdnsFlags = MdnsFlags::empty();
+        assert!(!flags.qr());
+        assert_eq!(flags.opcode(), MdnsOpcode::Query);
+        assert!(!flags.aa());
+        assert!(!flags.tc());
+        assert!(!flags.rd());
+        assert!(!flags.ra());
+        assert_eq!(flags.rcode(), MdnsRcode::NoError);
+    }
+
+    /// Validates that the [`MdnsFlags`] QR bit can be set correctly.
+    #[test]
+    fn test_flags_qr() {
+        let mut flags: MdnsFlags = MdnsFlags::empty();
+        assert!(!flags.qr());
+        flags.set_qr(true);
+        assert!(flags.qr());
+        flags.set_qr(false);
+        assert!(!flags.qr());
+    }
+
+    /// Validates that the [`MdnsFlags`] opcode bits can be set correctly.
+    #[test]
+    fn test_flags_opcode() {
+        let mut flags: MdnsFlags = MdnsFlags::empty();
+        assert_eq!(flags.opcode(), MdnsOpcode::Query);
+        flags.set_opcode(MdnsOpcode::Query);
+        assert_eq!(flags.opcode(), MdnsOpcode::Query);
+        flags.set_opcode(MdnsOpcode::IQuery);
+        assert_eq!(flags.opcode(), MdnsOpcode::IQuery);
+        flags.set_opcode(MdnsOpcode::Status);
+        assert_eq!(flags.opcode(), MdnsOpcode::Status);
+        flags.set_opcode(MdnsOpcode::Unknown(15));
+        assert_eq!(flags.opcode(), MdnsOpcode::Unknown(15));
+    }
+
+    /// Validates that the [`MdnsFlags`] aa bit can be set correctly.
+    #[test]
+    fn test_flags_aa() {
+        let mut flags: MdnsFlags = MdnsFlags::empty();
+        assert!(!flags.aa());
+        flags.set_aa(true);
+        assert!(flags.aa());
+        flags.set_aa(false);
+        assert!(!flags.aa());
+    }
+
+    /// Validates that the [`MdnsFlags`] tc bit can be set correctly.
+    #[test]
+    fn test_flags_tc() {
+        let mut flags: MdnsFlags = MdnsFlags::empty();
+        assert!(!flags.tc());
+        flags.set_tc(true);
+        assert!(flags.tc());
+        flags.set_tc(false);
+        assert!(!flags.tc());
+    }
+
+    /// Validates that the [`MdnsFlags`] rd bit can be set correctly.
+    #[test]
+    fn test_flags_rd() {
+        let mut flags: MdnsFlags = MdnsFlags::empty();
+        assert!(!flags.rd());
+        flags.set_rd(true);
+        assert!(flags.rd());
+        flags.set_rd(false);
+        assert!(!flags.rd());
+    }
+
+    /// Validates that the [`MdnsFlags`] ra bit can be set correctly.
+    #[test]
+    fn test_flags_ra() {
+        let mut flags: MdnsFlags = MdnsFlags::empty();
+        assert!(!flags.ra());
+        flags.set_ra(true);
+        assert!(flags.ra());
+        flags.set_ra(false);
+        assert!(!flags.ra());
+    }
+
+    /// Validates that the [`MdnsFlags`] rcode bit can be set correctly.
+    #[test]
+    fn test_flags_rcode() {
+        let mut flags: MdnsFlags = MdnsFlags::empty();
+        assert_eq!(flags.rcode(), MdnsRcode::NoError);
+        flags.set_rcode(MdnsRcode::NoError);
+        assert_eq!(flags.rcode(), MdnsRcode::NoError);
+        flags.set_rcode(MdnsRcode::FormatError);
+        assert_eq!(flags.rcode(), MdnsRcode::FormatError);
+        flags.set_rcode(MdnsRcode::ServerFailure);
+        assert_eq!(flags.rcode(), MdnsRcode::ServerFailure);
+        flags.set_rcode(MdnsRcode::NameError);
+        assert_eq!(flags.rcode(), MdnsRcode::NameError);
+        flags.set_rcode(MdnsRcode::NotImplemented);
+        assert_eq!(flags.rcode(), MdnsRcode::NotImplemented);
+        flags.set_rcode(MdnsRcode::Refused);
+        assert_eq!(flags.rcode(), MdnsRcode::Refused);
+        flags.set_rcode(MdnsRcode::Unknown(15));
+        assert_eq!(flags.rcode(), MdnsRcode::Unknown(15));
+    }
+
+    /// Creates and mutates an [`MdnsFlags`] instance in multiple different
+    /// ways, ensuring none of the bitwise operations affect other values.
+    #[test]
+    fn test_flags_generic() {
         let mut flags = MdnsFlags::empty();
         assert!(!flags.qr());
         flags.set_qr(true);
@@ -282,13 +386,7 @@ mod tests {
     }
 
     #[test]
-    fn test_flags_from_u16() {
-        let flags: MdnsFlags = MdnsFlags::from(MdnsFlags::QR_MASK);
-        assert!(flags.qr());
-    }
-
-    #[test]
-    fn test_flags_to_u16() {
+    fn test_u16_from_flags() {
         let mut flags: MdnsFlags = MdnsFlags::empty();
         assert_eq!(Into::<u16>::into(flags), 0x0000);
 
@@ -301,5 +399,39 @@ mod tests {
 
         flags.set_qr(true);
         assert_eq!(Into::<u16>::into(flags), MdnsFlags::AA_MASK | MdnsFlags::QR_MASK);
+    }
+
+    #[test]
+    fn test_flags_from_u16() {
+        let flags: MdnsFlags = MdnsFlags::from(MdnsFlags::QR_MASK);
+        assert!(flags.qr());
+    }
+
+    #[test]
+    fn test_slice_from_flags() {
+        let mut flags: MdnsFlags = MdnsFlags::empty();
+        assert_eq!(Into::<[u8; 2]>::into(flags), [0x00, 0x00]);
+
+        flags.set_qr(true);
+        assert_eq!(Into::<[u8; 2]>::into(flags), [0x80, 0x00]);
+
+        flags.set_qr(false);
+        flags.set_aa(true);
+        assert_eq!(Into::<[u8; 2]>::into(flags), [0x04, 0x00]);
+
+        flags.set_qr(true);
+        assert_eq!(Into::<[u8; 2]>::into(flags), [0x84, 0x00]);
+    }
+
+    #[test]
+    fn test_flags_from_slice() {
+        let flags: MdnsFlags = MdnsFlags::from([0x84, 0x80]);
+        assert!(flags.qr());
+        assert_eq!(flags.opcode(), MdnsOpcode::Query);
+        assert!(flags.aa());
+        assert!(!flags.tc());
+        assert!(!flags.rd());
+        assert!(flags.ra());
+        assert_eq!(flags.rcode(), MdnsRcode::NoError);
     }
 }
