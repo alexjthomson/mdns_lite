@@ -4,6 +4,10 @@
 //! mDNS allows devices on a local network to discover each other without the
 //! need for a central DNS server.
 
+#![no_std]
+
+extern crate alloc;
+
 pub mod network;
 pub mod protocol;
 pub mod service;

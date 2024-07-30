@@ -8,7 +8,7 @@ use super::{
 /// This struct allows structured access to the individual bits and sub-fields
 /// within the 16-bit flags field.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Default, Debug)]
-pub struct MdnsFlags(u16);
+pub struct MdnsFlags(pub(super) u16);
 
 impl MdnsFlags {
     /// Bitmask for the Query/Response bit.
@@ -62,7 +62,7 @@ impl MdnsFlags {
     /// Creates an empty set of [`MdnsFlags`].
     #[inline]
     #[must_use]
-    pub fn empty() -> Self {
+    pub const fn empty() -> Self {
         Self(0)
     }
 

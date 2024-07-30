@@ -53,7 +53,7 @@ impl MdnsHeader {
     /// Creates a new [`MdnsHeader`].
     #[inline]
     #[must_use]
-    pub fn new(
+    pub const fn new(
         id: u16,
         flags: MdnsFlags,
         total_question_records: u16,
@@ -78,7 +78,7 @@ impl MdnsHeader {
     /// - Zero total records.
     #[inline]
     #[must_use]
-    pub fn new_empty(id: u16) -> Self {
+    pub const fn new_empty(id: u16) -> Self {
         Self {
             id,
             flags: MdnsFlags::empty(),
@@ -92,7 +92,7 @@ impl MdnsHeader {
     /// Returns the ID of the transaction that the [`MdnsHeader`] belongs to.
     #[inline]
     #[must_use]
-    pub fn id(&self) -> u16 {
+    pub const fn id(&self) -> u16 {
         self.id
     }
 
@@ -105,7 +105,7 @@ impl MdnsHeader {
     /// Returns the [`MdnsFlags`].
     #[inline]
     #[must_use]
-    pub fn flags(&self) -> MdnsFlags {
+    pub const fn flags(&self) -> MdnsFlags {
         self.flags
     }
 
@@ -122,7 +122,7 @@ impl MdnsHeader {
     /// packet.
     #[inline]
     #[must_use]
-    pub fn total_question_records(&self) -> u16 {
+    pub const fn total_question_records(&self) -> u16 {
         self.total_question_records
     }
 
@@ -146,7 +146,7 @@ impl MdnsHeader {
     /// packet.
     #[inline]
     #[must_use]
-    pub fn total_answer_records(&self) -> u16 {
+    pub const fn total_answer_records(&self) -> u16 {
         self.total_answer_records
     }
 
@@ -170,7 +170,7 @@ impl MdnsHeader {
     /// packet.
     #[inline]
     #[must_use]
-    pub fn total_authority_records(&self) -> u16 {
+    pub const fn total_authority_records(&self) -> u16 {
         self.total_authority_records
     }
 
@@ -194,7 +194,7 @@ impl MdnsHeader {
     /// packet.
     #[inline]
     #[must_use]
-    pub fn total_additional_records(&self) -> u16 {
+    pub const fn total_additional_records(&self) -> u16 {
         self.total_additional_records
     }
 
@@ -214,8 +214,8 @@ impl MdnsHeader {
     /// Converts the [`MdnsHeader`] into raw bytes that can form the start of an
     /// mDNS packet.
     #[must_use]
-    pub fn to_bytes(&self) -> [u8; Self::MDNS_HEADER_SIZE] {
-        let flags: u16 = self.flags.into();
+    pub const fn to_bytes(&self) -> [u8; Self::MDNS_HEADER_SIZE] {
+        let flags: u16 = self.flags.0;
         [
             (self.id >> 8) as u8,
             (self.id & 0xff) as u8,

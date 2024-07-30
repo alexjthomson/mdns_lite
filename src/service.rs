@@ -3,7 +3,6 @@
 //! protocol and network modules to handle mDNS operations.
 
 use heapless::FnvIndexMap;
-use thiserror::Error;
 
 use crate::{
     MdnsClass,

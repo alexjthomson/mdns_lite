@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+
 use super::{
     MdnsClass,
     MdnsName,
@@ -112,6 +114,8 @@ impl MdnsQuery {
 
 #[cfg(test)]
 mod tests {
+    use alloc::string::ToString;
+
     use super::*;
 
     // TODO: Achieve 100% test coverage.

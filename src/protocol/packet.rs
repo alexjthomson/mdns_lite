@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+
 use super::{
     MdnsFlags,
     MdnsHeader,
@@ -378,6 +380,8 @@ impl MdnsPacket {
 
 #[cfg(test)]
 mod tests {
+    use alloc::vec::Vec;
+
     use super::super::*;
 
     // TODO: Achieve 100% test coverage.
@@ -410,7 +414,7 @@ mod tests {
             MdnsType::A,
             MdnsClass::IN,
             120,
-            vec![127, 0, 0, 1],
+            [127, 0, 0, 1].to_vec(),
         );
 
         packet.add_answer(response.clone());
@@ -429,7 +433,7 @@ mod tests {
     #[test]
     fn test_empty_packet_to_bytes() {
         let packet = MdnsPacket::new_empty(1234);
-        assert_eq!(packet.to_bytes(), vec![
+        assert_eq!(packet.to_bytes(), [
             0x04, 0xd2, // ID
             0x00, 0x00, // Flags
             0x00, 0x00, // QDCOUNT
@@ -449,27 +453,27 @@ mod tests {
             assert_eq!(from_bytes, packet);
         }
         // Test query packet:
-        test_from_bytes(MdnsPacket::new_query(1234, vec![
+        test_from_bytes(MdnsPacket::new_query(1234, [
             MdnsQuery::new(
                 MdnsName::from_name("test_service._http._tcp.local.").unwrap(),
                 MdnsType::PTR,
                 MdnsClass::IN,
             ),
-        ]));
+        ].to_vec()));
         // Test response packet:
         test_from_bytes(
             MdnsPacket::new_response(
                 1234,
-                vec![
+                [
                         MdnsResponse::new(
                         MdnsName::from_name("test_service._http._tcp.local.").unwrap(),
                         MdnsType::PTR,
                         MdnsClass::IN,
                         120,
-                        vec![127, 0, 0, 1],
+                        [127, 0, 0, 1].to_vec(),
                     )
-                ],
-                vec![
+                ].to_vec(),
+                [
                         MdnsResponse::new(
                         MdnsName::from_name("test_service._http._tcp.local.").unwrap(),
                         MdnsType::PTR,
@@ -477,16 +481,16 @@ mod tests {
                         300,
                         Vec::new(),
                     )
-                ],
-                vec![
+                ].to_vec(),
+                [
                         MdnsResponse::new(
                         MdnsName::from_name("test_service._http._tcp.local.").unwrap(),
                         MdnsType::PTR,
                         MdnsClass::IN,
                         600,
-                        vec![0, 1, 2, 3, 4, 5, 6, 7],
+                        [0, 1, 2, 3, 4, 5, 6, 7].to_vec(),
                     )
-                ],
+                ].to_vec(),
             )
         );
     }

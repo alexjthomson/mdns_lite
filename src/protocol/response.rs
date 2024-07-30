@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+
 use super::{
     MdnsClass,
     MdnsName,
@@ -285,6 +287,8 @@ impl MdnsResponse {
 
 #[cfg(test)]
 mod tests {
+    use alloc::string::ToString;
+
     use super::*;
 
     // TODO: Achieve 100% test coverage.
@@ -296,7 +300,7 @@ mod tests {
             MdnsType::A,
             MdnsClass::IN,
             120,
-            vec![127, 0, 0, 1],
+            [127, 0, 0, 1].to_vec(),
         );
 
         assert_eq!(response.name().to_string(), "my_sensor._http._tcp.local.");
@@ -304,14 +308,14 @@ mod tests {
         assert_eq!(response.response_class(), &MdnsClass::IN);
         assert_eq!(response.ttl(), 120);
         assert_eq!(response.data_length(), 4);
-        assert_eq!(response.data(), &vec![127, 0, 0, 1]);
+        assert_eq!(response.data(), &[127, 0, 0, 1]);
 
         response.set_ttl(240);
         assert_eq!(response.ttl(), 240);
 
-        response.set_data(vec![192, 168, 0, 1]);
+        response.set_data([192, 168, 0, 1].to_vec());
         assert_eq!(response.data_length(), 4);
-        assert_eq!(response.data(), &vec![192, 168, 0, 1]);
+        assert_eq!(response.data(), &[192, 168, 0, 1]);
     }
 
     #[test]
@@ -324,7 +328,7 @@ mod tests {
             MdnsType::PTR,
             MdnsClass::IN,
             120,
-            vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].to_vec(),
         );
         let response_a_bytes: Vec<u8> = response_a.to_bytes();
         let mut offset: usize = 0;

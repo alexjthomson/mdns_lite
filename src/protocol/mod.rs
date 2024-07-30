@@ -28,20 +28,23 @@ pub use rcode::MdnsRcode;
 pub use response::MdnsResponse;
 pub use r#type::MdnsType;
 
-use thiserror::Error;
-
 /// Describes various errors that could happen while parsing an mDNS packet.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Error, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum MdnsParseError {
-    #[error("The mDNS header is too small.
-    mDNS headers are exactly 12 bytes.")]
+    // TODO: Document each of the errors, why they occur, etc.
     HeaderTooSmall,
-    #[error("An mDNS query is malformed.
-    There are not enough bytes to contain the query type and query class.")]
     MalformedQuery,
-    #[error("An mDNS response is malformed.
-    There are not enough bytes to contain the remainder of the response after the name.")]
     MalformedResponse,
-    #[error("Failed to parse mDNS name: {0}")]
     NameError(MdnsNameError),
+}
+
+impl core::fmt::Display for MdnsParseError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::HeaderTooSmall => write!(f, "The mDNS header is too small. mDNS headers are exactly 12 bytes."),
+            Self::MalformedQuery => write!(f, "There are not enough bytes to contain the query type and query class."),
+            Self::MalformedResponse => write!(f, "There are not enough bytes to contain the remainder of the response after the name."),
+            Self::NameError(error) => write!(f, "Failed to parse mDNS name: {error}"),
+        }
+    }
 }
