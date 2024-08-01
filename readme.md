@@ -10,6 +10,8 @@ for a central DNS server.
 - Support for adding TXT records with service metadata.
 
 ## Todo
+- [ ] Refactor the `crate::service` module. The unit tests are all over the
+  place and the API can definitely be simplified.
 - [ ] Add additional unit tests to `protocol.rs` to validate that errors are
   returned when they are expected to.
 - [ ] Update the rust-docs with links so where in the mDNS specification various

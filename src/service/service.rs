@@ -1,200 +1,36 @@
-//! # ESP mDNS - Service
-//! This module contains high-level service-related logic and interacts with the
-//! protocol and network modules to handle mDNS operations.
+use alloc::{borrow::ToOwned, string::String, vec::Vec};
 
-use heapless::FnvIndexMap;
+use crate::{MdnsClass, MdnsName, MdnsNameError, MdnsPacket, MdnsResponse, MdnsType};
 
-use crate::{
-    MdnsClass,
-    MdnsName,
-    MdnsType,
-    MdnsPacket,
-    MdnsResponse,
-};
+use super::{txt_record::TxtRecordError, TxtRecords};
 
-/// Defines errors that can occur when interacting with [`MdnsService`] or
-/// [`MdnsTxtRecords`].
-#[derive(PartialEq, Eq, Clone, Debug, Error)]
+/// Describes various errors that could happen while interacting with an
+/// [`MdnsService`].
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum MdnsServiceError {
-    /// Indicates that there are not more spaces on the underlying
-    /// [`MdnsTxtRecords`] instance.
-    #[error("TXT records are full.")]
-    TxtRecordsFull,
-    #[error("Missing instance name labels.
-    There must be at least one instance name label provided.")]
-    MissingInstanceNameLabels,
-    #[error("Invalid instance name: `{0}`.")]
+    MissingInstanceName,
     InvalidInstanceName(String),
-    #[error("Missing service type labels.
-    There must be at least one service type label provided.")]
-    MissingServiceTypeLabels,
-    #[error("Invalid service type name label: `{0}`.
-    Service type names must start with a `_` character, followed by only alpha-numeric characters and hyphens.")]
-    InvalidServiceTypeName(String),
-    #[error("Invalid service type protocol: `{0}`.
-    Only `_tcp` and `_udp` are supported service type protocols.")]
-    InvalidServiceTypeProtocol(String),
-    #[error("Invalid service domain: `{0}`.")]
+    MissingServiceType,
+    InvalidServiceType(String),
+    InvalidServiceProtocol(String),
     InvalidServiceDomain(String),
-    #[error("TXT record entry too long.
-    TXT records can be a maximum of 254 bytes long (key + value).")]
-    TxtRecordEntryTooLong,
+    TxtRecordError(TxtRecordError),
+    NameError(MdnsNameError),
 }
 
-/// A heapless mDNS TXT record storage that holds a maximum of `16` records.
-/// 
-/// TXT records are used to store additional information about a service in the
-/// form of key-value pairs. These records provide metadata about the service
-/// being advertised and can be used to convey various details that might be
-/// useful to clients discovering the service.
-/// 
-/// ## Example Records
-/// TXT records are often used to provide information such as:
-/// - _Version_: The version number of the service.
-/// - _Path_: A specific path or endpoint that the client should connect to.
-/// - _Protocol Information_: Details about the protocols supported or required.
-/// - _Configuration Details_: Any configuration parameters that the client
-///   might need.
-/// - _Service Description_: A human-readable description of the service.
-/// 
-/// ## Record Format
-/// TXT records are typically formatted as strings, where each key-value pair is
-/// represented as `key=value`. Multiple TXT records can be included, each
-/// providing a different piece of information about the service.
-/// 
-/// ### Example
-/// ```ignore
-/// version=1.0
-/// path=/api
-/// secure=true
-/// description=ESP32 Web Service
-/// ```
-#[derive(PartialEq, Debug)]
-pub struct TxtRecords {
-    records: FnvIndexMap<String, String, 16>,
-}
-
-impl Default for TxtRecords {
-    #[inline]
-    #[must_use]
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl TxtRecords {
-    /// Creates a new, empty set of mDNS TXT records.
-    #[inline]
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            records: FnvIndexMap::new(),
+impl core::fmt::Display for MdnsServiceError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::MissingInstanceName => write!(f, "There must be at least one instance name label."),
+            Self::InvalidInstanceName(instance_name) => write!(f, "Invalid instance name: `{instance_name}`."),
+            Self::MissingServiceType => write!(f, "There must be at least one service type label."),
+            Self::InvalidServiceType(service_type) => write!(f, "Invalid service type: `{service_type}`."),
+            Self::InvalidServiceProtocol(service_protocol) => write!(f, "Invalid service protocol: `{service_protocol}`."),
+            Self::InvalidServiceDomain(service_domain) => write!(f, "Invalid service domain: `{service_domain}`."),
+            Self::TxtRecordError(error) => write!(f, "TXT record error: {error}"),
+            Self::NameError(error) => write!(f, "Name error: {error}"),
         }
     }
-
-    /// Returns the number of records within the [`TxtRecords`].
-    #[inline]
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.records.len()
-    }
-
-    /// Returns `true` if the [`TxtRecords`] contains no records; otherwise,
-    /// returns `false`.
-    #[inline]
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.records.is_empty()
-    }
-
-    /// Returns the capacity of the the [`TxtRecords`].
-    #[inline]
-    #[must_use]
-    pub fn capacity(&self) -> usize {
-        self.records.capacity()
-    }
-
-    /// Adds a new TXT record.
-    /// 
-    /// If the `key` provided corresponds to a record that already exists, its
-    /// value will be overwritten and the old value is returned. If the `key` is
-    /// new and there is space available for a new record, [`None`] is returned.
-    /// If there is no space available for a new record,
-    /// [`MdnsServiceError::TxtRecordsFull`] is returned instead.
-    /// 
-    /// The number of available TXT records is defined by `N`.
-    #[inline]
-    pub fn add(
-        &mut self,
-        key: &str,
-        value: &str,
-    ) -> Result<Option<String>, MdnsServiceError> {
-        match self.records.insert(
-            String::from(key),
-            String::from(value),
-        ) {
-            Ok(old_value) => Ok(old_value),
-            Err(_) => Err(MdnsServiceError::TxtRecordsFull),
-        }
-    }
-
-    /// Removes a TXT record by key.
-    /// 
-    /// If the key is found, this function will return the old value associated
-    /// with the key; otherwise, this function returns [`None`].
-    #[inline]
-    pub fn remove(&mut self, key: &str) -> Option<String> {
-        self.records.remove(key)
-    }
-
-    /// Retrieves a TXT record by key.
-    /// 
-    /// If no TXT record exists for the given `key`, this function returns
-    /// [`None`]; otherwise the record is returned.
-    #[inline]
-    #[must_use]
-    pub fn get(&self, key: &str) -> Option<&String> {
-        self.records.get(key)
-    }
-
-    /// Serialises the TXT records into a format suitable for mDNS packets.
-    /// 
-    /// This function returns a vector of bytes representing the serialised TXT
-    /// records.
-    #[must_use]
-    pub fn serialise(&self) -> Vec<u8> {
-        let mut buffer: Vec<u8> = Vec::new();
-        for (key, value) in &self.records {
-            // Create the TXT record:
-            let mut record = key.clone();
-            record.push('=');
-            record.push_str(value);
-            // Push to the buffer:
-            buffer.extend_from_slice(record.as_bytes());
-            buffer.push(0_u8); // Null terminator for each record
-        }
-        buffer
-    }
-
-    /// Converts the [`TxtRecords`] into wire format.
-    /// 
-    /// This format contains the length of each record at the start, followed by
-    /// the record itself.
-    pub fn to_wire_format(&self) -> Result<Vec<u8>, MdnsServiceError> {
-        let mut bytes = Vec::new();
-        for (key, value) in &self.records {
-            let kv_string = format!("{key}={value}");
-            let kv_length = kv_string.len();
-            if kv_length > 255 {
-                return Err(MdnsServiceError::TxtRecordEntryTooLong);
-            }
-            bytes.push(kv_length as u8);
-            bytes.extend_from_slice(kv_string.as_bytes());
-        }
-        Ok(bytes)
-    }
-
-    // TODO: Add `from_wire_format`.
 }
 
 /// A service that can be advertised via mDNS.
@@ -292,7 +128,7 @@ impl MdnsService {
             .map(|s| s.to_owned())
             .collect();
         if labels.is_empty() {
-            return Err(MdnsServiceError::MissingInstanceNameLabels)
+            return Err(MdnsServiceError::MissingInstanceName)
         }
 
         // Validate each label:
@@ -315,7 +151,7 @@ impl MdnsService {
             .map(|s| s.to_owned())
             .collect();
         if labels.is_empty() {
-            return Err(MdnsServiceError::MissingServiceTypeLabels);
+            return Err(MdnsServiceError::MissingServiceType);
         }
 
         // Validate non-protocol labels:
@@ -328,7 +164,7 @@ impl MdnsService {
                     labels.get_unchecked(i)
                 };
                 if !label.starts_with('_') || label.chars().skip(1).any(|c| !c.is_ascii_alphanumeric() && c != '-') {
-                    return Err(MdnsServiceError::InvalidServiceTypeName(label.clone()));
+                    return Err(MdnsServiceError::InvalidServiceType(label.clone()));
                 }
             }
         }
@@ -340,7 +176,7 @@ impl MdnsService {
             labels.get_unchecked(non_protocol_labels)
         };
         if service_protocol != "_tcp" && service_protocol != "_udp" {
-            return Err(MdnsServiceError::InvalidServiceTypeProtocol(service_protocol.clone()));
+            return Err(MdnsServiceError::InvalidServiceProtocol(service_protocol.clone()));
         }
 
         Ok(labels)
@@ -451,16 +287,12 @@ impl MdnsService {
     /// Adds a TXT record to the [`MdnsService`].
     /// 
     /// For more information, see [`MdnsTxtRecords::add`].
-    /// 
-    /// ## Returns
-    /// This function returns [`Ok`] with the previous value associated with the
-    /// key (if it existed), or [`Err`] if there was an error adding the record.
     #[inline]
     pub fn add_record(
         &mut self,
         key: &str,
         value: &str,
-    ) -> Result<Option<String>, MdnsServiceError> {
+    ) -> Option<String> {
         self.txt_records.add(key, value)
     }
 
@@ -495,8 +327,8 @@ impl MdnsService {
 
     /// Calculates and returns the full service [`DnsName`].
     #[must_use]
-    pub fn service_name(&self) -> MdnsName {
-        MdnsName::new(self.labels().to_vec())
+    pub fn service_name(&self) -> Result<MdnsName, MdnsNameError> {
+        MdnsName::new(&self.labels())
     }
 
     /// Calculates and returns the full host [`DnsName`].
@@ -504,12 +336,61 @@ impl MdnsService {
     /// This is the same as the [`Self::service_name()`], but without the
     /// service type included.
     #[must_use]
-    pub fn host_name(&self) -> MdnsName {
+    pub fn host_name(&self) -> Result<MdnsName, MdnsNameError> {
         let capacity: usize = self.instance_name_labels.len() + 1;
         let mut labels: Vec<String> = Vec::with_capacity(capacity);
         labels.extend(self.instance_name_labels.iter().cloned());
         labels.push(self.service_domain.clone());
-        MdnsName::new(labels.to_vec())
+        MdnsName::new(&labels)
+    }
+
+    /// Creates a new PTR record for this [`MdnsService`].
+    fn ptr_record(&self, payload: &MdnsName, ttl: u32) -> Result<MdnsResponse, MdnsServiceError> {
+        let mut labels: Vec<String> = Vec::new();
+        labels.extend(self.service_type_labels.iter().cloned());
+        labels.push(self.service_domain.clone());
+        match MdnsName::new(&labels) {
+            Ok(name) => {
+                Ok(MdnsResponse::new(
+                    name,
+                    MdnsType::PTR,
+                    MdnsClass::IN,
+                    ttl,
+                    payload.to_wire_format().to_vec(),
+                ))
+            }
+            Err(error) => Err(MdnsServiceError::NameError(error))
+        }
+    }
+
+    /// Creates a new SRV record for this [`MdnsService`].
+    fn srv_record(&self, service_name: MdnsName, payload: &MdnsName, ttl: u32) -> MdnsResponse {
+        MdnsResponse::new_srv(
+            service_name,
+            ttl,
+            0,
+            0,
+            self.port,
+            payload.to_wire_format(),
+        )
+    }
+
+    /// Creates a new TXT record for this [`MdnsService`].
+    fn txt_record(&self, service_name: MdnsName, ttl: u32) -> Option<Result<MdnsResponse, MdnsServiceError>> {
+        if self.txt_records.is_empty() {
+            None
+        } else {
+            Some(match self.txt_records.to_wire_format() {
+                Ok(payload) => Ok(MdnsResponse::new(
+                    service_name,
+                    MdnsType::TXT,
+                    MdnsClass::IN,
+                    ttl,
+                    payload,
+                )),
+                Err(error) => Err(MdnsServiceError::TxtRecordError(error))
+            })
+        }
     }
 
     /// Creates an [`MdnsPacket`] that announces this service.
@@ -519,55 +400,36 @@ impl MdnsService {
         ipv4: Option<&Vec<u8>>,
         ipv6: Option<&Vec<u8>>,
     ) -> Result<MdnsPacket, MdnsServiceError> {
-        let service_name = self.service_name();
-        let service_name_bytes = service_name.to_wire_format();
-        let host_name = self.host_name();
-        let host_name_bytes = host_name.to_wire_format();
+        // Get the service name bytes:
+        let service_name = match self.service_name() {
+            Ok(service_name) => service_name,
+            Err(error) => return Err(MdnsServiceError::NameError(error)),
+        };
+
+        // Get the host name bytes:
+        let host_name = match self.host_name() {
+            Ok(host_name) => host_name,
+            Err(error) => return Err(MdnsServiceError::NameError(error)),
+        };
 
         // Construct answers:
-        let mut answers = Vec::with_capacity(3);
+        let mut answers: Vec<MdnsResponse> = Vec::with_capacity(3);
 
         // PTR Record:
         // This record maps the service type to the specific service instance.
-        answers.push(MdnsResponse::new(
-            MdnsName::new({
-                // The DNS name for the PTR record should only contain the
-                // service type:
-                let mut service_type_labels = Vec::new();
-                service_type_labels.extend(self.service_type_labels.iter().cloned());
-                service_type_labels.push(self.service_domain.clone());
-                service_type_labels
-            }),
-            MdnsType::PTR,
-            MdnsClass::IN,
-            ttl,
-            service_name_bytes.clone(),
-        ));
+        answers.push(self.ptr_record(&service_name, ttl)?);
 
         // SRV Record:
         // This record provides the hostname and port where the service can be
         // accessed.
-        answers.push(MdnsResponse::new_srv(
-            service_name.clone(),
-            ttl,
-            0,
-            0,
-            self.port,
-            &host_name_bytes,
-        ));
+        answers.push(self.srv_record(service_name.clone(), &host_name, ttl));
 
         // TXT Record:
         // This record contains the key-value pairs with additional information
         // about the service. This record is only included if there are any TXT
         // records included with the service:
-        if !self.txt_records.is_empty() {
-            answers.push(MdnsResponse::new(
-                service_name.clone(),
-                MdnsType::TXT,
-                MdnsClass::IN,
-                ttl,
-                self.txt_records.to_wire_format()?,
-            ));
+        if let Some(txt_record) = self.txt_record(service_name.clone(), ttl) {
+            answers.push(txt_record?);
         }
 
         // Construct authority records:
@@ -639,19 +501,6 @@ mod tests {
         assert_eq!(records.len(), 2);
         assert_eq!(records.get("version"), Some(&"1.1".to_owned()));
         assert_eq!(records.get("path"), Some(&"/api".to_owned()));
-
-        // Add more records until the records reaches its capacity:
-        for i in 2..records.capacity() {
-            records.add(format!("test_record_{i}").as_str(), "test").unwrap();
-        }
-        // Confirm that the length matches the capacity:
-        assert_eq!(records.len(), records.capacity());
-
-        // Add one more record and expect it to fail:
-        assert_eq!(
-            records.add("this_should_fail", "too_many_elements").err(),
-            Some(MdnsServiceError::TxtRecordsFull)
-        );
     }
 
     #[test]
@@ -721,7 +570,7 @@ mod tests {
     fn test_new_mdns_service() {
         let mut service = create_test_mdns_service();
         assert_eq!(service.instance_name_labels().first().unwrap(), "bedroom_lightbulb");
-        assert_eq!(service.service_type_labels(), &vec!["_http", "_tcp"]);
+        assert_eq!(service.service_type_labels(), &["_http", "_tcp"]);
         assert_eq!(service.service_type_protocol(), &"_tcp".to_owned());
         assert_eq!(service.service_domain(), "local");
         assert_eq!(service.port(), 80);
@@ -734,17 +583,17 @@ mod tests {
     fn test_add_record() {
         let mut service = create_test_mdns_service();
         assert_eq!(service.total_records(), 0);
-        assert_eq!(service.add_record("version", "1.0"), Ok(None));
+        assert_eq!(service.add_record("version", "1.0"), None);
         assert_eq!(service.total_records(), 1);
-        assert_eq!(service.add_record("version", "1.1"), Ok(Some("1.0".to_owned())));
+        assert_eq!(service.add_record("version", "1.1"), Some("1.0".to_owned()));
         assert_eq!(service.total_records(), 1);
-        assert_eq!(service.add_record("entry_2", "2"), Ok(None));
+        assert_eq!(service.add_record("entry_2", "2"), None);
         assert_eq!(service.total_records(), 2);
-        assert_eq!(service.add_record("entry_3", "3"), Ok(None));
+        assert_eq!(service.add_record("entry_3", "3"), None);
         assert_eq!(service.total_records(), 3);
-        assert_eq!(service.add_record("entry_4", "4"), Ok(None));
+        assert_eq!(service.add_record("entry_4", "4"), None);
         assert_eq!(service.total_records(), 4);
-        assert_eq!(service.add_record("entry_5", "5"), Ok(None));
+        assert_eq!(service.add_record("entry_5", "5"), None);
         assert_eq!(service.total_records(), 5);
     }
 
@@ -797,15 +646,15 @@ mod tests {
         // Valid instance names
         assert_eq!(
             MdnsService::validate_instance_name("ValidName"),
-            Ok(vec!["ValidName".to_owned()])
+            Ok(["ValidName".to_owned()].to_vec())
         );
         assert_eq!(
             MdnsService::validate_instance_name("Another_Valid-Name"),
-            Ok(vec!["Another_Valid-Name".to_owned()])
+            Ok(["Another_Valid-Name".to_owned()].to_vec())
         );
         assert_eq!(
             MdnsService::validate_instance_name("One.Two.Three"),
-            Ok(vec!["One".to_owned(), "Two".to_owned(), "Three".to_owned()])
+            Ok(["One".to_owned(), "Two".to_owned(), "Three".to_owned()].to_vec())
         );
         
         // Invalid instance names
@@ -818,15 +667,15 @@ mod tests {
         // Valid service types
         assert_eq!(
             MdnsService::validate_service_type("_udp"),
-            Ok(vec!["_udp".to_owned()])
+            Ok(["_udp".to_owned()].to_vec())
         );
         assert_eq!(
             MdnsService::validate_service_type("_http._tcp"),
-            Ok(vec!["_http".to_owned(), "_tcp".to_owned()])
+            Ok(["_http".to_owned(), "_tcp".to_owned()].to_vec())
         );
         assert_eq!(
             MdnsService::validate_service_type("_ftp._udp"),
-            Ok(vec!["_ftp".to_owned(), "_udp".to_owned()])
+            Ok(["_ftp".to_owned(), "_udp".to_owned()].to_vec())
         );
 
         // Invalid service types
@@ -839,8 +688,8 @@ mod tests {
     #[test]
     fn test_validate_service_domain() {
         // Valid service domains
-        assert_eq!(MdnsService::validate_service_domain("validdomain"), Ok("validdomain".to_string()));
-        assert_eq!(MdnsService::validate_service_domain("another-valid_domain"), Ok("another-valid_domain".to_string()));
+        assert_eq!(MdnsService::validate_service_domain("validdomain"), Ok("validdomain".to_owned()));
+        assert_eq!(MdnsService::validate_service_domain("another-valid_domain"), Ok("another-valid_domain".to_owned()));
 
         // Invalid service domains
         assert!(MdnsService::validate_service_domain("invalid.domain").is_err());

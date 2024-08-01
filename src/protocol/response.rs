@@ -7,9 +7,9 @@ use super::{
     MdnsParseError,
 };
 
-use crate::service::{
-    MdnsServiceError,
+use crate::txt_record::{
     TxtRecords,
+    TxtRecordError,
 };
 
 /// Represents an mDNS response.
@@ -215,7 +215,7 @@ impl MdnsResponse {
         name: MdnsName,
         ttl: u32,
         txt_records: &TxtRecords,
-    ) -> Result<Self, MdnsServiceError> {
+    ) -> Result<Self, TxtRecordError> {
         let data: Vec<u8> = txt_records.to_wire_format()?;
         Ok(Self {
             name,
